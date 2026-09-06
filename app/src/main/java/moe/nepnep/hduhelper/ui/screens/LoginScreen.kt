@@ -53,10 +53,12 @@ fun LoginScreen(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("登录数字杭电", style = MiuixTheme.textStyles.title2)
-            Text("使用学校统一身份认证账号", style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        }
+        Text(
+            "使用杭电统一身份认证账号登录",
+            modifier = Modifier.padding(horizontal = 4.dp),
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
         Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(20.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TextField(

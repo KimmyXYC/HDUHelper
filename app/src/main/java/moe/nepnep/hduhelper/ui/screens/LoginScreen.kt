@@ -98,6 +98,5 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth().testTag("submit_login"),
         )
         TextButton("使用官方页面登录", onClick = onVerify, enabled = !form.loading, modifier = Modifier.fillMaxWidth())
-        Text("账号信息仅用于连接学校服务", modifier = Modifier.padding(horizontal = 4.dp), style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
     }
 }

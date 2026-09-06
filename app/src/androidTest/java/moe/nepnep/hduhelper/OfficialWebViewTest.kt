@@ -1,6 +1,7 @@
 package moe.nepnep.hduhelper
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -25,15 +26,21 @@ import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicReference
+import java.io.File
+import java.io.FileInputStream
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
 
 /** Opt-in public-site test using the real Android frame clock. Never enters or reads credentials. */
 class OfficialWebViewTest {
-    @Test(timeout = 60_000)
+    @Test(timeout = 90_000)
     fun officialPageUsesPhoneLayoutAndKeyboardDoesNotResizeIt() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("officialWebViewTest") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Some devices block ActivityScenario's first launch while the test process is in the background.
+        instrumentation.uiAutomation.executeShellCommand("am start -W -n moe.nepnep.hduhelper/.MainActivity").use {
+            FileInputStream(it.fileDescriptor).readBytes()
+        }
         val error = AtomicReference<String?>(null)
         val metrics = AtomicReference<JSONObject?>(null)
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -60,20 +67,50 @@ class OfficialWebViewTest {
             fun sample() {
                 instrumentation.runOnMainSync {
                     webView!!.evaluateJavascript(
-                        """JSON.stringify({width:innerWidth,height:innerHeight,mobile:/Android.*Mobile/.test(navigator.userAgent),device:typeof device==='string'?device:'',ready:!!window.neworientation})""",
+                        """(()=>{
+                            const roots=[document,...Array.from(document.querySelectorAll('*')).map(e=>e.shadowRoot).filter(Boolean)];
+                            const fields=roots.flatMap(r=>Array.from(r.querySelectorAll('input')))
+                                .filter(e=>e.type!=='hidden'&&e.getBoundingClientRect().width>0);
+                            return JSON.stringify({
+                            width:innerWidth,height:innerHeight,
+                            mobile:/Android.*Mobile/.test(navigator.userAgent),
+                            device:typeof device==='string'?device:'',
+                            portrait:matchMedia('(orientation: portrait)').matches,
+                            bodyHeight:document.body?.getBoundingClientRect().height,
+                            scrollWidth:document.documentElement.scrollWidth,
+                            fields:fields.map(e=>({left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}))
+                        });})()""",
                     ) { value -> runCatching { metrics.set(JSONObject(JSONTokener(value).nextValue() as String)) } }
                 }
             }
-            await(30_000) {
+            await(45_000) {
                 sample()
-                metrics.get()?.optBoolean("ready") == true && metrics.get()?.optString("device") == "PHONE"
+                val current = metrics.get()
+                current != null && current.optString("device") == "PHONE" &&
+                    current.optDouble("bodyHeight") >= current.optInt("height") &&
+                    (current.optJSONArray("fields")?.length() ?: 0) >= 2
             }
+            Thread.sleep(1500)
+            metrics.set(null)
+            await(5_000) { sample(); metrics.get() != null }
             assertNull(error.get())
             val before = metrics.get()!!
             assertTrue(before.getBoolean("mobile"))
+            assertTrue("CSS media queries must see a portrait viewport", before.getBoolean("portrait"))
             assertTrue(before.getInt("height") > before.getInt("width"))
             assertTrue(before.getInt("width") <= 480)
-            instrumentation.sendStatus(2, Bundle().apply { putString("stream", "PHONE viewport: ${before.getInt("width")} x ${before.getInt("height")}\n") })
+            assertTrue("The page must fill the viewport without a bottom gap", before.getDouble("bodyHeight") >= before.getInt("height"))
+            instrumentation.sendStatus(2, Bundle().apply { putString("stream", "PHONE viewport: $before\n") })
+            if (InstrumentationRegistry.getArguments().getString("captureOfficialPage") == "true") {
+                // This opt-in test has an empty cookie jar and never enters credentials.
+                Thread.sleep(1000)
+                val screenshot = instrumentation.uiAutomation.takeScreenshot()
+                File(instrumentation.targetContext.cacheDir, "official-login.png").outputStream().use {
+                    screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+                screenshot.recycle()
+            }
+            assertTrue("The mobile page must not overflow horizontally", before.getInt("scrollWidth") <= before.getInt("width") + 1)
             instrumentation.runOnMainSync {
                 webView!!.requestFocus()
                 webView!!.evaluateJavascript(
@@ -97,6 +134,7 @@ class OfficialWebViewTest {
             assertEquals(before.getInt("width"), after.getInt("width"))
             assertEquals(before.getInt("height"), after.getInt("height"))
             assertEquals("PHONE", after.getString("device"))
+            assertTrue(after.getBoolean("portrait"))
             instrumentation.sendStatus(2, Bundle().apply { putString("stream", "Keyboard shown: viewport unchanged\n") })
         }
     }

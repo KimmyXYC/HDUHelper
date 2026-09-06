@@ -2,6 +2,7 @@ package moe.nepnep.hduhelper.ui.screens
 
 import android.annotation.SuppressLint
 import android.os.Build
+import android.view.ViewGroup
 import androidx.core.view.doOnLayout
 import android.net.http.SslError
 import android.webkit.CookieManager
@@ -114,15 +115,17 @@ fun VerificationScreen(
     val endpoints = remember { AuthEndpoints() }
     val webView = remember(session.generation) {
         WebView(context).apply {
+            // AndroidView otherwise supplies WRAP_CONTENT. WebView then treats CSS viewport height
+            // as zero, even when Compose measures it to fill the screen: vh collapses and SSO sees PC.
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             val defaultUa = WebSettings.getDefaultUserAgent(context)
             val chrome = Regex("Chrome/[0-9.]+").find(defaultUa)?.value.orEmpty()
             settings.userAgentString = "Mozilla/5.0 (Linux; Android ${Build.VERSION.RELEASE}; Mobile) " +
                 "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 $chrome Mobile Safari/537.36"
-            // SSO selects PC/PHONE using CSS viewport orientation, not just the UA.
-            // Do not create or auto-fit a 980px desktop layout viewport.
-            settings.useWideViewPort = false
+            // Honor the official width=device-width viewport without zooming out to fit desktop content.
+            settings.useWideViewPort = true
             settings.loadWithOverviewMode = false
             settings.textZoom = 100
             setInitialScale(0)

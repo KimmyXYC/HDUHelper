@@ -48,3 +48,13 @@ python3 tools/live-auth-smoke.py --serial DEVICE_SERIAL
 ```
 
 `LiveAuthTest` 默认跳过。错误密码、连续认证失败、并发和异常场景使用 MockWebServer / 内存模拟测试，避免真实账号被锁定。官方短信、验证码等交互场景依赖学校触发，未进行完整实测。
+
+官方页面的公开布局回归测试（不输入账号密码）：
+
+```sh
+adb shell am instrument -w -e class moe.nepnep.hduhelper.OfficialWebViewTest \
+  -e officialWebViewTest true \
+  moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+WebView 必须设置原生 `MATCH_PARENT` 宽高，并启用官网的 viewport 标签。仅在 Compose 中使用 `fillMaxSize()` 会保留默认的 `WRAP_CONTENT`，导致 CSS 视口高度异常：官网误判为横屏电脑版，背景高度不足并在底部留白。测试检查手机布局、页面填满视口、无横向溢出，以及弹出键盘后视口尺寸保持不变。

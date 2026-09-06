@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Authentication files live in noBackupFilesDir. WebView storage is excluded separately. -->
+    <exclude domain="root" path="app_webview/" />
+    <exclude domain="root" path="app_webview_hdu_auth/" />
+</full-backup-content>

@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">HDUHelper</string>
+    <string name="nav_schedule">日程</string>
+    <string name="nav_timetable">课表</string>
+    <string name="nav_campus_code">一码通</string>
+    <string name="nav_applications">应用</string>
+    <string name="nav_profile">我的</string>
+    <string name="schedule_title">安排校园每一天</string>
+    <string name="schedule_description">在这里查看日程与待办，让学习生活井井有条。</string>
+    <string name="timetable_title">每一堂课，心中有数</string>
+    <string name="timetable_description">在这里查看课程安排，轻松掌握上课时间与地点。</string>
+    <string name="campus_code_title">校园通行，一码随行</string>
+    <string name="campus_code_description">在这里使用校园一码通，让日常通行更便捷。</string>
+    <string name="applications_title">校园服务，触手可及</string>
+    <string name="applications_description">在这里发现常用校园应用，汇集学习与生活服务。</string>
+    <string name="coming_soon">敬请期待</string>
+</resources>

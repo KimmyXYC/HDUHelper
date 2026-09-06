@@ -14,8 +14,12 @@ okhttp = "5.5.0"
 jsoup = "1.23.2"
 coroutines = "1.11.0"
 serialization = "1.11.0"
+zxing = "3.5.4"
+bouncycastle = "1.85.2"
 
 [libraries]
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

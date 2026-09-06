@@ -26,16 +26,93 @@ class AuthRepository(
     private val sessions: AuthSessionFactory,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val retryDelay: suspend (Long) -> Unit = { delay(it) },
-) {
+) : ServiceAuthorizer {
     private val guard = Any()
     private val work = Mutex()
     private var initialized = false
     private var generation = 0L
+    private val generationState = MutableStateFlow(0L)
+    override val sessionGeneration: StateFlow<Long> = generationState.asStateFlow()
     private var revision = 0L
     private var saved = StoredSession()
+    private val invalidationListeners = mutableListOf<() -> Unit>()
     private var pending: VerificationSession? = null
     private val mutableState = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = mutableState.asStateFlow()
+
+    fun onSessionInvalidated(listener: () -> Unit) = synchronized(guard) { invalidationListeners.add(listener); Unit }
+
+    private fun advanceGeneration() {
+        generation++
+        invalidationListeners.forEach { it() }
+        generationState.value = generation
+    }
+
+    override fun serviceIdentity(): ServiceIdentity? = synchronized(guard) {
+        saved.profile?.let { ServiceIdentity(generation, it.account) }
+    }
+
+    override fun isCurrent(identity: ServiceIdentity): Boolean = synchronized(guard) {
+        identity.generation == generation && saved.profile?.account == identity.account
+    }
+
+    /** Business authorization must test SSO itself, even when the portal session is still valid. */
+    override suspend fun authorizeService(identity: ServiceIdentity, service: HttpUrl): String = withContext(io) {
+        initialize()
+        work.withLock {
+            val original = synchronized(guard) {
+                if (!isCurrent(identity)) throw AuthException(AuthFailure.CANCELLED, "操作已取消")
+                saved
+            }
+            val session = sessions.create(original.cookies)
+            try {
+                val ticket = try { session.authorizeService(service) } catch (e: AuthException) {
+                    if (e.kind != AuthFailure.EXPIRED) throw e
+                    val password = original.password
+                    if (!settings.autoLogin || password == null) throw e
+                    var failures = original.failureCount.coerceIn(0, 3)
+                    var restored = false
+                    while (failures < 3 && !restored) {
+                        checkGeneration(identity.generation)
+                        if (failures > 0) retryDelay(if (failures == 1) 2_000 else 8_000)
+                        checkGeneration(identity.generation)
+                        try {
+                            val profile = session.login(original.account, password)
+                            commitProfile(identity.generation, original, session, profile)
+                            restored = true
+                        } catch (failure: AuthException) {
+                            if (failure.kind != AuthFailure.CREDENTIALS) throw failure
+                            failures++
+                            synchronized(guard) {
+                                checkGeneration(identity.generation)
+                                val next = saved.copy(failureCount = failures)
+                                persist(next)
+                                saved = next
+                            }
+                        }
+                    }
+                    if (!restored) {
+                        expire(identity.generation, "登录已失效，自动登录连续失败，请重新登录")
+                        throw AuthException(AuthFailure.EXPIRED, "请重新登录")
+                    }
+                    session.authorizeService(service)
+                }
+                synchronized(guard) {
+                    checkGeneration(identity.generation)
+                    val next = saved.copy(cookies = session.cookies)
+                    persist(next)
+                    saved = next
+                }
+                ticket
+            } catch (e: AuthException) {
+                if (e.kind == AuthFailure.VERIFICATION) synchronized(guard) {
+                    checkGeneration(identity.generation)
+                    prepareVerification(identity.generation, session, e.message, original.account)
+                }
+                throw e
+            }
+        }
+    }
 
     suspend fun initialize() = withContext(io) {
         if (synchronized(guard) { initialized }) return@withContext
@@ -62,7 +139,7 @@ class AuthRepository(
         val name = account.trim()
         if (name.isEmpty() || password.isEmpty()) throw AuthException(AuthFailure.CREDENTIALS, "请输入账号和密码")
         val token = synchronized(guard) {
-            generation++
+            advanceGeneration()
             revision++
             pending = null
             mutableState.value = AuthState(AuthStatus.SIGNING_IN, saved.profile, name)
@@ -232,7 +309,7 @@ class AuthRepository(
         initialize()
         synchronized(guard) {
             pending?.let { return@withContext it }
-            generation++
+            advanceGeneration()
             revision++
             val session = sessions.create(saved.cookies)
             prepareVerification(generation, session, "请在官方页面完成验证", saved.account)
@@ -262,7 +339,7 @@ class AuthRepository(
 
     /** Immediate invalidation also prevents a late WebView callback from restoring an abandoned session. */
     fun cancelLogin() = synchronized(guard) {
-        generation++
+        advanceGeneration()
         revision++
         pending = null
         publishStable()
@@ -271,7 +348,7 @@ class AuthRepository(
     suspend fun disableAutoLogin() = withContext(io) {
         initialize()
         synchronized(guard) {
-            generation++
+            advanceGeneration()
             revision++
             pending = null
             // Delete credentials before updating the preference, so a crash can never retain a disabled password.
@@ -286,7 +363,7 @@ class AuthRepository(
     suspend fun logout() = withContext(io) {
         initialize()
         synchronized(guard) {
-            generation++
+            advanceGeneration()
             revision++
             pending = null
             val next = StoredSession(account = saved.account)
@@ -316,7 +393,7 @@ class AuthRepository(
 
     private fun expire(token: Long, notice: String) = synchronized(guard) {
         checkGeneration(token)
-        generation++
+        advanceGeneration()
         revision++
         pending = null
         val next = StoredSession(account = saved.account, notice = notice)

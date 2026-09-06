@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--adb', default='adb')
     parser.add_argument('--serial', required=True)
+    parser.add_argument('--campus-code', action='store_true', help='Verify native campus QR and a complete automatic refresh period')
     args = parser.parse_args()
     adb = [args.adb, '-s', args.serial]
     account = input('数字杭电账号: ').strip()
@@ -24,7 +25,7 @@ def main():
     name = 'hdu-auth-test-' + uuid.uuid4().hex
     port = subprocess.check_output(adb + ['forward', 'tcp:0', 'localabstract:' + name], text=True).strip()
     runner = subprocess.Popen(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'class',
-        'moe.nepnep.hduhelper.LiveAuthTest', '-e', 'liveAuthSocket', name,
+        ('moe.nepnep.hduhelper.LiveCampusCodeTest' if args.campus_code else 'moe.nepnep.hduhelper.LiveAuthTest'), '-e', 'liveAuthSocket', name,
         'moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     lines = []
@@ -33,6 +34,12 @@ def main():
         for line in runner.stdout:
             lines.append(line)
             print(line, end='', flush=True)
+            if args.campus_code and line.strip() == 'INSTRUMENTATION_STATUS_CODE: 1':
+                # Some Android variants block ActivityScenario launching a background test host.
+                subprocess.run(adb + ['shell', 'am', 'start', '-W', '-a', 'android.intent.action.MAIN',
+                    '-c', 'android.intent.category.LAUNCHER', '-n',
+                    'moe.nepnep.hduhelper/androidx.activity.ComponentActivity'],
+                    check=False, capture_output=True)
 
     reader = threading.Thread(target=collect, daemon=True)
     reader.start()
@@ -43,7 +50,7 @@ def main():
                 raise RuntimeError('Device test stopped before accepting the connection')
             try:
                 connection = socket.create_connection(('127.0.0.1', int(port)), timeout=3)
-                connection.settimeout(180)
+                connection.settimeout(600 if args.campus_code else 180)
                 connection.sendall(struct.pack('>I', len(payload)) + payload)
                 # ADB may accept a connection before the Android socket exists, then immediately close it.
                 header = connection.recv(2)
@@ -68,7 +75,7 @@ def main():
                     data += chunk
                 print(data.decode('utf-8'), flush=True)
                 header = connection.recv(2)
-        runner.wait(timeout=180)
+        runner.wait(timeout=600 if args.campus_code else 180)
         reader.join(timeout=5)
         if not any('OK (1 test)' in line for line in lines):
             raise RuntimeError('Live authentication smoke test failed')

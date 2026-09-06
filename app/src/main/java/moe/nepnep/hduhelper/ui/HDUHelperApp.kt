@@ -55,7 +55,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 
 @Composable
-fun HDUHelperApp(model: AppViewModel, modifier: Modifier = Modifier) {
+fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier: Modifier = Modifier) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "main"
@@ -64,10 +64,12 @@ fun HDUHelperApp(model: AppViewModel, modifier: Modifier = Modifier) {
     val form by model.loginForm.collectAsStateWithLifecycle()
     val verificationError by model.verificationError.collectAsStateWithLifecycle()
     val actionError by model.actionError.collectAsStateWithLifecycle()
+    val campusState by campusModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
+    var loginReturnDestination by rememberSaveable { mutableStateOf(AppDestination.PROFILE) }
     val pageStateHolder = rememberSaveableStateHolder()
     val sensitive = route == "login" || route == "verification"
 
@@ -75,6 +77,11 @@ fun HDUHelperApp(model: AppViewModel, modifier: Modifier = Modifier) {
         model.onForeground()
         onStopOrDispose { model.onBackground() }
     }
+    LifecycleStartEffect(route, destination) {
+        campusModel.setVisible(route == "main" && destination == AppDestination.CAMPUS_CODE)
+        onStopOrDispose { campusModel.setVisible(false) }
+    }
+    moe.nepnep.hduhelper.ui.components.CampusCodeBrightness(route == "main" && destination == AppDestination.CAMPUS_CODE)
     DisposableEffect(sensitive, activity) {
         val window = activity?.window
         val previouslySecure = (window?.attributes?.flags ?: 0) and WindowManager.LayoutParams.FLAG_SECURE != 0
@@ -85,7 +92,7 @@ fun HDUHelperApp(model: AppViewModel, modifier: Modifier = Modifier) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             model.events.collect { event ->
                 when (event) {
-                    AppEvent.LoggedIn -> { destination = AppDestination.PROFILE; nav.popBackStack("main", false) }
+                    AppEvent.LoggedIn -> { destination = loginReturnDestination; nav.popBackStack("main", false) }
                     AppEvent.OpenVerification -> nav.navigate("verification") { launchSingleTop = true }
                     AppEvent.ClearWebSession -> VerificationCookies.clear()
                 }
@@ -142,15 +149,17 @@ fun HDUHelperApp(model: AppViewModel, modifier: Modifier = Modifier) {
                         when (page) {
                             AppDestination.SCHEDULE -> ScheduleScreen(Modifier.fillMaxSize())
                             AppDestination.TIMETABLE -> TimetableScreen(Modifier.fillMaxSize())
-                            AppDestination.CAMPUS_CODE -> CampusCodeScreen(Modifier.fillMaxSize())
+                            AppDestination.CAMPUS_CODE -> CampusCodeScreen(campusState, { campusModel.refresh() },
+                                onLogin = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
+                                onVerify = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openVerification() }, modifier = Modifier.fillMaxSize())
                             AppDestination.APPLICATIONS -> ApplicationsScreen(Modifier.fillMaxSize())
                             AppDestination.PROFILE -> ProfileScreen(
                                 auth, settings,
-                                onLogin = { model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
+                                onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onAppearance = { nav.navigate("appearance") { launchSingleTop = true } },
                                 onLogout = model::logout,
                                 onAbout = { nav.navigate("about") { launchSingleTop = true } },
-                                onVerify = model::openVerification,
+                                onVerify = { loginReturnDestination = AppDestination.PROFILE; model.openVerification() },
                                 modifier = Modifier.fillMaxSize(), actionError = actionError,
                             )
                         }

@@ -2,6 +2,19 @@ package moe.nepnep.hduhelper.data.auth
 
 import kotlinx.serialization.Serializable
 import okhttp3.Cookie
+import okhttp3.HttpUrl
+import kotlinx.coroutines.flow.StateFlow
+
+data class ServiceIdentity(val generation: Long, val account: String) {
+    override fun toString() = "ServiceIdentity([redacted])"
+}
+
+interface ServiceAuthorizer {
+    val sessionGeneration: StateFlow<Long>
+    fun serviceIdentity(): ServiceIdentity?
+    fun isCurrent(identity: ServiceIdentity): Boolean
+    suspend fun authorizeService(identity: ServiceIdentity, service: HttpUrl): String
+}
 
 @Serializable
 data class UserProfile(val account: String, val name: String)

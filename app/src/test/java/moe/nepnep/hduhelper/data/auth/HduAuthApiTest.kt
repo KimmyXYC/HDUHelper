@@ -77,6 +77,24 @@ class HduAuthApiTest {
         assertEquals(32, a.first.length)
     }
 
+    @Test fun serviceTicketUsesExistingSsoCookiesAndStopsBeforeBusinessCallback() = runBlocking {
+        val cookie = Cookie.Builder().name("TGC").value("synthetic").hostOnlyDomain("127.0.0.1").build()
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", "${endpoints.campusCodeService}?ticket=synthetic-ticket").build())
+        assertEquals("synthetic-ticket", api.create(listOf(StoredCookie.from(cookie))).authorizeService(endpoints.campusCodeService))
+        val request = server.takeRequest()
+        assertTrue(request.target.contains("service="))
+        assertEquals("TGC=synthetic", request.headers["Cookie"])
+        assertEquals(1, server.requestCount)
+        expectSuspendFailure(AuthFailure.PROTOCOL) { api.create(emptyList()).authorizeService("https://example.com/login".toHttpUrl()) }
+    }
+
+    @Test fun serviceAuthorizationDetectsExpiredSsoAndRejectsOtherCallbacks() = runBlocking {
+        server.enqueue(response(loginHtml))
+        expectSuspendFailure(AuthFailure.EXPIRED) { api.create(emptyList()).authorizeService(endpoints.campusCodeService) }
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", "https://ymt.hdu.edu.cn/other?ticket=synthetic").build())
+        expectSuspendFailure(AuthFailure.PROTOCOL) { api.create(emptyList()).authorizeService(endpoints.campusCodeService) }
+    }
+
     @Test fun successfulJsonRequiresAccountAndExplicitResult() {
         assertEquals("student01", HduAuthApi.parseProfile(profileJson).account)
         for (body in listOf("""{"result":1,"data":{}}""", """{"data":{"loginName":"x"}}""", """{"result":{},"data":{}}""", "<html>server error</html>")) {

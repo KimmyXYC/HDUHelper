@@ -291,6 +291,30 @@ class AuthRepositoryTest {
         assertNull(store.value!!.notice)
     }
 
+    @Test fun expiredSsoRecoversEvenWhenPortalStillAcceptsItsSession() = runTest {
+        var grants = 0
+        val session = FakeSession().apply {
+            authorizeAction = { grants++; if (grants == 1) fail(AuthFailure.EXPIRED) else "synthetic-ticket" }
+            loginAction = { _, _ -> user }
+        }
+        val repo = AuthRepository(MemoryStore(cached()), FakeSettings(), { session }, StandardTestDispatcher(testScheduler))
+        repo.initialize()
+        assertEquals("synthetic-ticket", repo.authorizeService(repo.serviceIdentity()!!, "https://ymt.hdu.edu.cn/uias-h5/login".toHttpUrl()))
+        assertEquals(1, session.logins)
+        assertEquals(2, grants)
+    }
+
+    @Test fun disabledAutoLoginDoesNotDiscardValidPortalOnServiceSsoExpiry() = runTest {
+        val session = FakeSession().apply { authorizeAction = { fail(AuthFailure.EXPIRED) } }
+        val settings = FakeSettings().apply { setAutoLogin(false) }
+        val repo = AuthRepository(MemoryStore(cached()), settings, { session }, StandardTestDispatcher(testScheduler))
+        repo.initialize()
+        try { repo.authorizeService(repo.serviceIdentity()!!, "https://ymt.hdu.edu.cn/uias-h5/login".toHttpUrl()); error("Expected expiry") }
+        catch (e: AuthException) { assertEquals(AuthFailure.EXPIRED, e.kind) }
+        assertEquals(0, session.logins)
+        assertEquals(AuthStatus.AUTHENTICATED, repo.state.value.status)
+    }
+
     private class MemoryStore(var value: StoredSession?) : SessionStore {
         override fun load() = value
         override fun save(session: StoredSession) { value = session }
@@ -310,9 +334,11 @@ class AuthRepositoryTest {
         var renewAction: suspend () -> UserProfile = { error("Unexpected renewal") }
         var loginAction: suspend (String, String) -> UserProfile = { _, _ -> error("Unexpected login") }
         var getAction: suspend () -> String = { error("Unexpected request") }
+        var authorizeAction: suspend () -> String = { error("Unexpected service authorization") }
         override suspend fun check() = checkAction()
         override suspend fun renewSso(): UserProfile { renewals++; return renewAction() }
         override suspend fun login(account: String, password: String): UserProfile { logins++; return loginAction(account, password) }
         override suspend fun get(url: HttpUrl) = getAction()
+        override suspend fun authorizeService(service: HttpUrl) = authorizeAction()
     }
 }

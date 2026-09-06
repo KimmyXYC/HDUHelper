@@ -38,6 +38,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.zxing.core)
+    implementation(libs.bouncycastle)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.foundation)

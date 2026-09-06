@@ -32,6 +32,7 @@ import kotlin.coroutines.resumeWithException
 class AuthEndpoints(
     val portal: HttpUrl = "https://i.hdu.edu.cn/".toHttpUrl(),
     val sso: HttpUrl = "https://sso.hdu.edu.cn/".toHttpUrl(),
+    val campusCodeService: HttpUrl = "https://ymt.hdu.edu.cn/uias-h5/login".toHttpUrl(),
 ) {
     val login: HttpUrl = sso.resolve("login")!!.newBuilder()
         .addQueryParameter("service", portal.resolve("sopcb/").toString()).build()
@@ -76,6 +77,7 @@ interface AuthSession {
     suspend fun renewSso(): UserProfile
     suspend fun login(account: String, password: String): UserProfile
     suspend fun get(url: HttpUrl): String
+    suspend fun authorizeService(service: HttpUrl): String = throw AuthException(AuthFailure.PROTOCOL, "此服务暂不支持 SSO 授权")
 }
 
 fun interface AuthSessionFactory { fun create(cookies: List<StoredCookie>): AuthSession }
@@ -168,7 +170,20 @@ class HduAuthApi(private val endpoints: AuthEndpoints = AuthEndpoints()) : AuthS
             return result.body
         }
 
-        private suspend fun request(original: Request, allowSso: Boolean): Reply {
+        override suspend fun authorizeService(service: HttpUrl): String {
+            if (service != endpoints.campusCodeService) throw AuthException(AuthFailure.PROTOCOL, "不支持的学校服务")
+            val url = endpoints.sso.resolve("login")!!.newBuilder().addQueryParameter("service", service.toString()).build()
+            val reply = request(Request.Builder().url(url).build(), allowSso = true, serviceCallback = service)
+            val ticket = reply.url.queryParameter("ticket")
+            if (sameCallback(reply.url, service) && !ticket.isNullOrBlank()) return ticket
+            val doc = Jsoup.parse(reply.body)
+            errorFromLogin(doc)?.let { throw it }
+            if (needsVerification(doc)) throw AuthException(AuthFailure.VERIFICATION, "请在官方页面完成身份验证")
+            if (isLoginHtml(reply.body)) throw AuthException(AuthFailure.EXPIRED, "SSO 登录已过期，请重新登录")
+            throw AuthException(AuthFailure.PROTOCOL, "未获取到学校服务授权")
+        }
+
+        private suspend fun request(original: Request, allowSso: Boolean, serviceCallback: HttpUrl? = null): Reply {
             var next = original
             repeat(12) {
                 if (!endpoints.accepts(next.url)) throw AuthException(AuthFailure.PROTOCOL, "学校登录跳转地址无法识别，请使用官方验证")
@@ -181,6 +196,10 @@ class HduAuthApi(private val endpoints: AuthEndpoints = AuthEndpoints()) : AuthS
                     if (r.code in listOf(301, 302, 303, 307, 308)) {
                         val target = r.header("Location")?.let { r.request.url.resolve(it) }
                             ?: throw AuthException(AuthFailure.PROTOCOL, "学校返回了无法识别的跳转")
+                        // Return the CAS ticket without following the business callback or exporting SSO cookies.
+                        if (serviceCallback != null && next.method == "GET" && sameCallback(target, serviceCallback)) {
+                            return Reply(target, "")
+                        }
                         if (!endpoints.accepts(target)) throw AuthException(AuthFailure.PROTOCOL, "学校登录跳转地址无法识别，请使用官方验证")
                         if (!allowSso && target.host == endpoints.sso.host && target.encodedPath.startsWith("/login")) {
                             throw AuthException(AuthFailure.EXPIRED, "登录已过期")
@@ -208,6 +227,9 @@ class HduAuthApi(private val endpoints: AuthEndpoints = AuthEndpoints()) : AuthS
     private class Reply(val url: HttpUrl, val body: String)
 
     companion object {
+        private fun sameCallback(url: HttpUrl, service: HttpUrl) =
+            url.newBuilder().query(null).fragment(null).build() == service && url.fragment == null && url.username.isEmpty() && url.password.isEmpty()
+
         /** The official protected endpoint requires this per-request CSRF pair, including for GET requests. */
         @android.annotation.SuppressLint("WeakHash") // School wire protocol, never used for password storage.
         internal fun csrfHeaders(): Pair<String, String> {

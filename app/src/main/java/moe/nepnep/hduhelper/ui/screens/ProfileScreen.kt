@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import moe.nepnep.hduhelper.R
 import moe.nepnep.hduhelper.data.auth.AuthState
 import moe.nepnep.hduhelper.data.auth.AuthStatus
-import moe.nepnep.hduhelper.data.settings.AppSettings
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
@@ -41,7 +40,6 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 @Composable
 fun ProfileScreen(
     auth: AuthState,
-    settings: AppSettings,
     onLogin: () -> Unit,
     onAppearance: () -> Unit,
     onLogout: () -> Unit,
@@ -102,8 +100,8 @@ fun ProfileScreen(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("设置", modifier = Modifier.padding(start = 8.dp), style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             Card(modifier = Modifier.fillMaxWidth()) {
-                ArrowPreference(title = "外观设置", summary = settings.theme.label, onClick = onAppearance, modifier = Modifier.testTag("open_appearance"))
-                ArrowPreference(title = "关于应用", summary = stringResource(R.string.app_name), onClick = onAbout)
+                ArrowPreference(title = "外观设置", onClick = onAppearance, modifier = Modifier.testTag("open_appearance"))
+                ArrowPreference(title = "关于应用", onClick = onAbout)
             }
         }
         actionError?.let { StatusMessage(it) }

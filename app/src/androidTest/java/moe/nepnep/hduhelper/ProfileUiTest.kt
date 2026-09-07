@@ -26,7 +26,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import moe.nepnep.hduhelper.data.auth.AuthState
 import moe.nepnep.hduhelper.data.auth.AuthStatus
 import moe.nepnep.hduhelper.data.auth.UserProfile
-import moe.nepnep.hduhelper.data.settings.AppSettings
 import moe.nepnep.hduhelper.data.settings.ThemeMode
 import moe.nepnep.hduhelper.ui.LoginFormState
 import moe.nepnep.hduhelper.ui.screens.AppearanceScreen
@@ -49,7 +48,7 @@ class ProfileUiTest {
         compose.setContent {
             HDUHelperTheme {
                 ProfileScreen(
-                    auth = AuthState(AuthStatus.SIGNED_OUT), settings = AppSettings(),
+                    auth = AuthState(AuthStatus.SIGNED_OUT),
                     onLogin = { loginClicks++ }, onAppearance = { appearanceClicks++ },
                     onLogout = {}, onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
                 )
@@ -59,7 +58,9 @@ class ProfileUiTest {
         compose.onNodeWithText("登录数字杭电").assertDoesNotExist()
         compose.onNodeWithTag("logout").assertDoesNotExist()
         compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
-        compose.onNodeWithText("杭电助手").assertIsDisplayed()
+        compose.onNodeWithText("杭电助手").assertDoesNotExist()
+        compose.onNodeWithText("跟随系统").assertDoesNotExist()
+        compose.onNodeWithText("关于应用").assertIsDisplayed()
         compose.onNodeWithText("未登录").performClick()
         compose.onNodeWithText("外观设置").performClick()
         compose.runOnIdle { assertEquals(1, loginClicks); assertEquals(1, appearanceClicks) }
@@ -82,7 +83,7 @@ class ProfileUiTest {
         compose.setContent {
             HDUHelperTheme(darkTheme = darkTheme) {
                 ProfileScreen(
-                    auth = signedInState(), settings = AppSettings(),
+                    auth = signedInState(),
                     onLogin = {}, onAppearance = {}, onLogout = { logoutCalls++ },
                     onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
                 )
@@ -122,7 +123,7 @@ class ProfileUiTest {
         compose.setContent {
             HDUHelperTheme {
                 ProfileScreen(
-                    auth = signedInState(), settings = AppSettings(),
+                    auth = signedInState(),
                     onLogin = {}, onAppearance = {}, onLogout = { logoutCalls++ },
                     onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
                 )
@@ -144,7 +145,7 @@ class ProfileUiTest {
             HDUHelperTheme {
                 if (showProfile) {
                     ProfileScreen(
-                        auth = auth, settings = AppSettings(),
+                        auth = auth,
                         onLogin = {}, onAppearance = {}, onLogout = { logoutCalls++ },
                         onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
                     )

@@ -154,7 +154,7 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
                                 onVerify = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openVerification() }, modifier = Modifier.fillMaxSize())
                             AppDestination.APPLICATIONS -> ApplicationsScreen(Modifier.fillMaxSize())
                             AppDestination.PROFILE -> ProfileScreen(
-                                auth, settings,
+                                auth,
                                 onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onAppearance = { nav.navigate("appearance") { launchSingleTop = true } },
                                 onLogout = model::logout,

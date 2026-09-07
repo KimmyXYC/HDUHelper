@@ -83,9 +83,9 @@ def main():
         if row:
             radius = max(radius, math.hypot(left + row[0] - cx, y - cy),
                          math.hypot(left + row[2] - cx, y + 1 - cy))
-    # 108dp adaptive canvas, at most 60dp artwork, within a 64dp safe circle.
-    # Android guarantees the central 66dp circle; the extra inset protects antialiasing.
-    scale = min(60 / ((bottom - top) / 4), 60 / ((right - left) / 4), 32 / (radius / 4))
+    # 108dp adaptive canvas, at most 48.6dp artwork, within a 51.84dp safe circle.
+    # Leave generous white space around the centered artwork in every launcher shape.
+    scale = min(48.6 / ((bottom - top) / 4), 48.6 / ((right - left) / 4), 25.92 / (radius / 4))
     tx, ty = 54 - cx / 4 * scale, 54 - cy / 4 * scale
     scale, tx, ty = (float(f"{value:.9f}") for value in (scale, tx, ty))
 

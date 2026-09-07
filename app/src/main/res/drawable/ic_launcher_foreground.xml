@@ -3,8 +3,8 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <group android:scaleX="0.085592011" android:scaleY="0.085592011"
-        android:translateX="11.203994294" android:translateY="11.2467903">
+    <group android:scaleX="0.069329529" android:scaleY="0.069329529"
+        android:translateX="19.335235378" android:translateY="19.369900143">
         <group android:translateX="-70.7253" android:translateY="-78.3465">
             <path android:fillColor="#3085F3" android:pathData="M805.731 603.039 724.719 319.832c34.084.275 62.769 26.734 65.229 61.318l15.783 221.889Z" />
             <path android:fillColor="#3085F3" android:pathData="M628.383 259.396c35.045-10.024 71.581 10.259 81.606 45.304l71.807 251.026-175.772-285.001a66.067 66.067 0 0 1 22.359-11.329Z" />

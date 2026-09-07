@@ -83,8 +83,8 @@ class TimetableUiTest {
         var state by mutableStateOf(initial())
         compose.setContent {HDUHelperTheme {Scaffold {padding->TimetableSettingsScreen(state,{state=state.copy(settings=it)},{state=state.copy(selectedCampus=it)},Modifier.fillMaxSize().padding(padding))}}}
         compose.onNodeWithText(state.data!!.term.label).assertIsDisplayed()
-        for(tag in listOf("setting_other_weeks","setting_finished","setting_weekend","setting_teacher","setting_location"))compose.onNodeWithTag(tag).performScrollTo().performClick()
-        compose.runOnIdle {assertEquals(TimetableSettings(false,true,true,false,false),state.settings)}
+        for(tag in listOf("setting_other_weeks","setting_finished","setting_exams","setting_weekend","setting_teacher","setting_location"))compose.onNodeWithTag(tag).performScrollTo().performClick()
+        compose.runOnIdle {assertEquals(TimetableSettings(false,true,true,false,false,false),state.settings)}
         compose.onNodeWithTag("campus_2").performScrollTo().performClick()
         compose.runOnIdle {assertEquals("2",state.selectedCampus)}
         compose.onNodeWithTag("campus_auto").performScrollTo().performClick()
@@ -116,10 +116,10 @@ class TimetableUiTest {
         val repository=SettingsRepository(context)
         val original=repository.state.value.timetable
         try {
-            repository.setTimetable(TimetableSettings(false,true,true,false,false))
+            repository.setTimetable(TimetableSettings(false,true,true,false,false,false))
             repository.setTimetableCampus("synthetic-settings","2026-3","2")
             val reopened=SettingsRepository(context)
-            assertEquals(TimetableSettings(false,true,true,false,false),reopened.state.value.timetable)
+            assertEquals(TimetableSettings(false,true,true,false,false,false),reopened.state.value.timetable)
             assertEquals("2",reopened.timetableCampus("synthetic-settings","2026-3"))
             assertNull(reopened.timetableCampus("another-synthetic","2026-3"))
             assertNull(reopened.timetableCampus("synthetic-settings","2025-12"))

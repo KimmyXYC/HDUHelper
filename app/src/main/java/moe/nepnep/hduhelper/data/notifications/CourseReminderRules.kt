@@ -16,28 +16,37 @@ data class NotificationSettings(
     val afterClass: Boolean = false,
     val beforeMinutes: Int = 10,
     val afterMinutes: Int = 1,
+    val beforeExam: Boolean = true,
+    val examMinutes: Int = 30,
 ) {
     fun normalized() = copy(
+        examMinutes = examMinutes.takeIf { it in reminderMinutes } ?: 30,
         beforeMinutes = beforeMinutes.takeIf { it in reminderMinutes } ?: 10,
         afterMinutes = afterMinutes.takeIf { it in reminderMinutes } ?: 1,
     )
 }
 
-enum class CourseReminderKind(val label: String) { START("上课"), END("下课") }
+enum class CourseReminderKind(val label: String) { START("上课"), END("下课"), EXAM_START("考试开始") }
 enum class CourseReminderPhase { UPCOMING, ELAPSED, EXPIRED }
 
 data class CourseReminder(
     val key: String,
     val accountKey: String,
     val termKey: String,
-    val meeting: CourseMeeting,
+    val meeting: CourseMeeting?,
     val date: LocalDate,
     val kind: CourseReminderKind,
     val target: Long,
     val begins: Long,
     val courseStart: Long = target,
     val courseEnd: Long = target,
+    val exam: ExamArrangement? = null,
 ) {
+    val itemId: String get() = exam?.id ?: requireNotNull(meeting).id
+    val title: String get() = exam?.name ?: requireNotNull(meeting).name
+    val location: String get() = exam?.place ?: requireNotNull(meeting).location
+    val elapsedLabel: String get() = if (exam != null) "考试已开始" else "已${kind.label}"
+    val upcomingLabel: String get() = "距${kind.label}"
     val expires: Long get() = target + 60_000
     fun phase(now: Long) = when {
         now >= expires -> CourseReminderPhase.EXPIRED
@@ -71,7 +80,7 @@ object CourseReminderRules {
                 if (valid.zipWithNext().any { (a, b) -> a.second > b.first }) continue
                 val start = date.atTime(valid.first().first).atZone(campusZone).toInstant().toEpochMilli()
                 val end = date.atTime(valid.last().second).atZone(campusZone).toInstant().toEpochMilli()
-                for (kind in CourseReminderKind.entries) {
+                for (kind in listOf(CourseReminderKind.START, CourseReminderKind.END)) {
                     if (kind == CourseReminderKind.START && !prefs.beforeClass || kind == CourseReminderKind.END && !prefs.afterClass) continue
                     val target = if (kind == CourseReminderKind.START) start else end
                     if (target + 60_000 <= now) continue
@@ -80,6 +89,14 @@ object CourseReminderRules {
                     result += CourseReminder(key, hash(data.account), data.term.key, meeting, date, kind, target, target - minutes * 60_000L, start, end)
                 }
             }
+        }
+        if (prefs.beforeExam) for (exam in data.exams.items.filter { it.timed }) {
+            val start = exam.startTime!!.atZone(campusZone).toInstant().toEpochMilli()
+            val end = exam.endTime!!.atZone(campusZone).toInstant().toEpochMilli()
+            if (start + 60_000 <= now) continue
+            val key = hash("exam/${data.account}/${data.term.key}/${exam.id}/$start")
+            result += CourseReminder(key, hash(data.account), data.term.key, null, exam.startTime!!.toLocalDate(),
+                CourseReminderKind.EXAM_START, start, start - prefs.examMinutes * 60_000L, start, end, exam)
         }
         return result.distinctBy { it.key }.sortedWith(compareBy<CourseReminder> { it.begins }.thenBy { it.key })
     }

@@ -26,6 +26,8 @@ class ScheduleViewModelTest {
     }
     private class Source : TimetableSource {
         var cache: TimetableData? = data(meeting("a"))
+        var terms: List<TimetableData>? = null
+        override suspend fun cachedTerms(account: String) = terms?.filter { it.account == account } ?: listOfNotNull(cached(account))
         var cacheGate: CompletableDeferred<Unit>? = null
         var catalogGate: CompletableDeferred<Unit>? = null
         var fetchGate: CompletableDeferred<Unit>? = null
@@ -149,4 +151,52 @@ class ScheduleViewModelTest {
         } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
     }
 
+    @Test fun examNotificationOpensOfflineAndRejectsRemovedExamOrOtherAccount() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val owner = ViewModelStore()
+        try {
+            val date = LocalDate.of(2026, 9, 14)
+            val exam = ExamArrangement("exam", "合成考试", start = "2026-09-14T09:00", end = "2026-09-14T11:00")
+            val source = Source().apply { cache = data(meeting("a")).copy(exams = ExamSnapshot(listOf(exam), 123)) }
+            val auth = MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试")))
+            val model = ScheduleViewModel(ScheduleRepository(Store(ScheduleBook()), StandardTestDispatcher(testScheduler)), source,
+                auth, MutableStateFlow(1L), MutableStateFlow(false), Reminders(), { date.atTime(8, 0) })
+            owner.put("schedule", model)
+            val key = moe.nepnep.hduhelper.data.notifications.CourseReminderRules.hash("student")
+            model.openCourseNotification(key, term.key, "exam", date, exam = true); runCurrent()
+            assertEquals("exam", model.state.value.examDetailId)
+            assertNull(model.state.value.courseDetailId)
+            assertEquals(date, model.state.value.date)
+            model.openCourseNotification("another", term.key, "exam", date, exam = true); runCurrent()
+            assertNull(model.state.value.examDetailId)
+            assertNotNull(model.state.value.error)
+            source.cache = source.cache!!.copy(exams = ExamSnapshot(updatedAt = 124))
+            model.openCourseNotification(key, term.key, "exam", date, exam = true); runCurrent()
+            assertNull(model.state.value.examDetailId)
+            assertNotNull(model.state.value.error)
+            auth.value = AuthState(AuthStatus.SIGNED_OUT); runCurrent()
+            assertNull(model.state.value.courses)
+        } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+    @Test fun changingAgendaDateReadsPreviouslySyncedHistoricalExamsOffline() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val owner = ViewModelStore()
+        try {
+            val current = data(meeting("current"))
+            val exam = ExamArrangement("past-exam", "历史考试", start = "2026-07-01T09:00", end = "2026-07-01T11:00")
+            val past = current.copy(term = AcademicTerm("2025", "12"), weeks = listOf(WeekRange(20, "2026-06-29", "2026-07-05")),
+                exams = ExamSnapshot(listOf(exam), 123))
+            val source = Source().apply { cache = current; terms = listOf(current, past) }
+            val model = ScheduleViewModel(ScheduleRepository(Store(ScheduleBook()), StandardTestDispatcher(testScheduler)), source,
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(false), Reminders(), { LocalDateTime.parse("2026-09-14T09:00") })
+            owner.put("schedule", model); model.setVisible(true); runCurrent()
+            assertEquals(current.term, model.state.value.courses!!.term)
+            model.selectDate(LocalDate.of(2026, 7, 1)); runCurrent()
+            assertEquals(past.term, model.state.value.courses!!.term)
+            assertEquals(listOf(exam), ExamRules.onDate(model.state.value.courses!!, model.state.value.date))
+            model.selectDate(LocalDate.of(2026, 9, 14)); runCurrent()
+            assertEquals(current.term, model.state.value.courses!!.term)
+        } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
 }

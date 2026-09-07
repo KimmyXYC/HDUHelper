@@ -166,4 +166,24 @@ class TimetableViewModelTest {
             assertEquals(displayed, model.state.value.data)
         } finally { store.clear(); Dispatchers.resetMain() }
     }
+    @Test fun returnCurrentWeekLeavesHistoricalSemesterAndUsesCurrentCacheOffline() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val store = ViewModelStore()
+        try {
+            val source = Source()
+            val historical = AcademicTerm("2025", "12")
+            source.values[historical.key] = data(meeting("past")).copy(term = historical)
+            val model = TimetableViewModel(source,
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(false), MutableStateFlow(AppSettings()), { _, _ -> null }, {}, { _, _, _ -> },
+                today = { LocalDate.of(2026, 9, 21) })
+            store.put("test", model); model.setVisible(true); runCurrent()
+            model.selectTerm(historical); runCurrent()
+            model.selectWeek(5)
+            assertEquals(historical, model.state.value.selectedTerm)
+            model.goToDefaultWeek(); runCurrent()
+            assertEquals(term, model.state.value.selectedTerm)
+            assertEquals(2, model.state.value.week)
+            assertEquals(0, source.calls)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
 }

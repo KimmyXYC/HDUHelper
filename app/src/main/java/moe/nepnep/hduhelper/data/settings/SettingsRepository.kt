@@ -27,12 +27,13 @@ class SettingsRepository(context: Context) : AuthSettings {
                 preferences.getBoolean("notify_island", false), preferences.getBoolean("notify_start", true),
                 preferences.getBoolean("notify_end", false), preferences.getInt("notify_start_minutes", 10),
                 preferences.getInt("notify_end_minutes", 1),
+                preferences.getBoolean("notify_exam", true), preferences.getInt("notify_exam_minutes", 30),
             ).normalized(),
             theme = ThemeMode.entries.firstOrNull { it.name == preferences.getString("theme", null) } ?: ThemeMode.SYSTEM,
             autoLogin = preferences.getBoolean("auto_login", true),
             timetable = TimetableSettings(
                 preferences.getBoolean("tt_other", true), preferences.getBoolean("tt_finished", false),
-                preferences.getBoolean("tt_weekend", false), preferences.getBoolean("tt_teacher", true), preferences.getBoolean("tt_location", true),
+                preferences.getBoolean("tt_weekend", false), preferences.getBoolean("tt_teacher", true), preferences.getBoolean("tt_location", true), preferences.getBoolean("tt_exams", true),
             ),
         ),
     )
@@ -56,6 +57,7 @@ class SettingsRepository(context: Context) : AuthSettings {
             putBoolean("notify_island", settings.island); putBoolean("notify_start", settings.beforeClass)
             putBoolean("notify_end", settings.afterClass); putInt("notify_start_minutes", settings.beforeMinutes)
             putInt("notify_end_minutes", settings.afterMinutes)
+            putBoolean("notify_exam", settings.beforeExam); putInt("notify_exam_minutes", settings.examMinutes)
         }
         mutableState.value = mutableState.value.copy(notifications = settings)
     }
@@ -64,6 +66,7 @@ class SettingsRepository(context: Context) : AuthSettings {
         preferences.edit {
             putBoolean("tt_other", value.showOtherWeeks); putBoolean("tt_finished", value.showFinished)
             putBoolean("tt_weekend", value.showWeekend); putBoolean("tt_teacher", value.showTeacher); putBoolean("tt_location", value.showLocation)
+            putBoolean("tt_exams", value.showExams)
         }
         mutableState.value = mutableState.value.copy(timetable = value)
     }

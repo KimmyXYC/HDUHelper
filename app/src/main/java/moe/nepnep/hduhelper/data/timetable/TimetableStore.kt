@@ -14,6 +14,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 interface TimetableStore {
+    fun loadAll(account: String): List<TimetableData> = listOfNotNull(load(account))
     fun load(account: String, term: AcademicTerm? = null): TimetableData?
     fun save(data: TimetableData)
     fun clear()
@@ -24,19 +25,23 @@ class EncryptedTimetableStore(private val directory: File, private val keyProvid
     private fun file(account: String, term: AcademicTerm) = File(directory, "${TimetableParser.stableId(account, term.key)}.enc")
     @Synchronized override fun load(account: String, term: AcademicTerm?): TimetableData? {
         val files = if (term == null) directory.listFiles()?.filter { it.extension == "enc" }.orEmpty() else listOf(file(account, term))
-        return files.mapNotNull { file ->
-            if (!file.isFile) return@mapNotNull null
-            try {
-                val bytes = file.readBytes()
-                require(bytes.size >= 29 && bytes[0] == 1.toByte())
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, keyProvider(), javax.crypto.spec.GCMParameterSpec(128, bytes.copyOfRange(1, 13)))
-                cipher.updateAAD(file.name.toByteArray())
-                val plaintext = cipher.doFinal(bytes, 13, bytes.size - 13)
-                val data = try { json.decodeFromString<TimetableData>(plaintext.decodeToString()) } finally { plaintext.fill(0) }
-                data.takeIf { it.account == account && (term == null || it.term.key == term.key) }
-            } catch (_: Exception) { file.delete(); null }
-        }.maxByOrNull { it.updatedAt }
+        return readFiles(files, account, term).maxByOrNull { it.updatedAt }
+    }
+    @Synchronized override fun loadAll(account: String): List<TimetableData> =
+        readFiles(directory.listFiles()?.filter { it.extension == "enc" }.orEmpty(), account, null)
+
+    private fun readFiles(files: List<File>, account: String, term: AcademicTerm?): List<TimetableData> = files.mapNotNull { file ->
+        if (!file.isFile) return@mapNotNull null
+        try {
+            val bytes = file.readBytes()
+            require(bytes.size >= 29 && bytes[0] == 1.toByte())
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, keyProvider(), javax.crypto.spec.GCMParameterSpec(128, bytes.copyOfRange(1, 13)))
+            cipher.updateAAD(file.name.toByteArray())
+            val plaintext = cipher.doFinal(bytes, 13, bytes.size - 13)
+            val data = try { json.decodeFromString<TimetableData>(plaintext.decodeToString()) } finally { plaintext.fill(0) }
+            data.takeIf { it.account == account && (term == null || it.term.key == term.key) }
+        } catch (_: Exception) { file.delete(); null }
     }
 
     @Synchronized override fun save(data: TimetableData) {

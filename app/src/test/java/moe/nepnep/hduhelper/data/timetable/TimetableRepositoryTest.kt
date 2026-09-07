@@ -69,4 +69,31 @@ class TimetableRepositoryTest {
         assertEquals(AuthFailure.CANCELLED,(result.await().exceptionOrNull() as AuthException).kind)
         assertNull(store.value)
     }
+    @Test fun examFailurePreservesCacheWhileCoursesUpdateAndEmptySuccessClearsExams() = runTest {
+        val auth = Authorizer(); val store = Store()
+        val exam = ExamArrangement("exam", "测试考试", start = "2026-09-19T09:00", end = "2026-09-19T11:00")
+        store.value = data(meeting("old")).copy(exams = ExamSnapshot(listOf(exam), 100))
+        var fail = true
+        val repo = TimetableRepository(auth, store, {
+            object : TimetableSession {
+                override suspend fun authorize(ticket: String) = Unit
+                override suspend fun catalog() = catalog
+                override suspend fun fetch(account: String, term: AcademicTerm, catalog: TimetableCatalog) = data(meeting("new"))
+                override suspend fun fetchExams(account: String, term: AcademicTerm): ExamSnapshot {
+                    if (fail) throw TimetableException(TimetableFailure.NETWORK, "synthetic")
+                    return ExamSnapshot(updatedAt = 200)
+                }
+            }
+        }, io = StandardTestDispatcher(testScheduler))
+        val partial = repo.refresh(term, catalog)
+        assertEquals("new", partial.meetings.single().id)
+        assertEquals(listOf(exam), partial.exams.items)
+        assertEquals(100L, partial.exams.updatedAt)
+        assertTrue(partial.exams.failed)
+        fail = false
+        val empty = repo.refresh(term, catalog)
+        assertTrue(empty.exams.items.isEmpty())
+        assertEquals(200L, empty.exams.updatedAt)
+        assertFalse(empty.exams.failed)
+    }
 }

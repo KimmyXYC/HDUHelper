@@ -135,7 +135,7 @@ class NotificationSettingsUiTest {
             assertFalse(first.state.value.notifications.island)
             assertFalse(isolated.getSharedPreferences("settings", Context.MODE_PRIVATE).contains("notify_live"))
             assertEquals(NotificationSettings(), first.state.value.notifications)
-            val value = NotificationSettings(true, false, true, 7, 23)
+            val value = NotificationSettings(true, false, true, 7, 23, beforeExam = false, examMinutes = 13)
             first.setNotifications(value)
             assertEquals(value, SettingsRepository(isolated).state.value.notifications)
             assertTrue(first.claimNotificationPermissionPrompt())

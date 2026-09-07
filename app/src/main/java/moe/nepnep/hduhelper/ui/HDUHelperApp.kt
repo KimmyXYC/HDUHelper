@@ -142,13 +142,13 @@ fun HDUHelperApp(
                     scheduleModel.openNotification(parts[0], original, date)
                 }
             }
-            if (link.scheme == "hduhelper" && link.host == "course" && parts.size == 4) {
+            if (link.scheme == "hduhelper" && link.host in setOf("course", "exam") && parts.size == 4) {
                 val date = runCatching { java.time.LocalDate.parse(parts[3]) }.getOrNull()
                 if (date != null) {
                     destination = AppDestination.SCHEDULE
                     if (sensitive) model.cancelLogin()
                     nav.popBackStack("main", false)
-                    scheduleModel.openCourseNotification(parts[0], parts[1], parts[2], date)
+                    scheduleModel.openCourseNotification(parts[0], parts[1], parts[2], date, exam = link.host == "exam")
                 }
             }
             onScheduleLinkConsumed()
@@ -200,7 +200,7 @@ fun HDUHelperApp(
         composable("main") {
             Scaffold(
                 topBar = {
-                    if (destination == AppDestination.TIMETABLE) TimetableTopBar(timetableState, timetableModel::goToDefaultWeek, timetableModel::selectTerm)
+                    if (destination == AppDestination.TIMETABLE) TimetableTopBar(timetableState, timetableModel::goToDefaultWeek, timetableModel::selectTerm, timetableModel::selectWeek)
                     else if (destination == AppDestination.SCHEDULE) ScheduleTopBar {
                         scheduleModel.add(); nav.navigate("schedule_edit") { launchSingleTop = true }
                     }

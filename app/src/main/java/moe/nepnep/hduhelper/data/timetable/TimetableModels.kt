@@ -59,6 +59,7 @@ data class TimetableData(
     val clocks: List<CampusClock>,
     val updatedAt: Long,
     val warnings: List<String> = emptyList(),
+    val exams: ExamSnapshot = ExamSnapshot(),
 ) { override fun toString() = "TimetableData([redacted])" }
 
 @Serializable
@@ -68,12 +69,14 @@ data class TimetableSettings(
     val showWeekend: Boolean = false,
     val showTeacher: Boolean = true,
     val showLocation: Boolean = true,
+    val showExams: Boolean = true,
 )
 
 enum class TimetableFailure { AUTHORIZATION, PERMISSION, CLOSED, PROTOCOL, NETWORK, SERVICE }
 class TimetableException(val kind: TimetableFailure, override val message: String) : Exception(message)
 
 interface TimetableSession {
+    suspend fun fetchExams(account: String, term: AcademicTerm): ExamSnapshot = ExamSnapshot()
     suspend fun authorize(ticket: String)
     suspend fun catalog(): TimetableCatalog
     suspend fun fetch(account: String, term: AcademicTerm, catalog: TimetableCatalog): TimetableData
@@ -81,6 +84,7 @@ interface TimetableSession {
 fun interface TimetableSessionFactory { fun create(): TimetableSession }
 
 interface TimetableSource {
+    suspend fun cachedTerms(account: String): List<TimetableData> = listOfNotNull(cached(account))
     suspend fun cached(account: String, term: AcademicTerm? = null): TimetableData?
     suspend fun catalog(): TimetableCatalog
     suspend fun refresh(term: AcademicTerm, catalog: TimetableCatalog): TimetableData

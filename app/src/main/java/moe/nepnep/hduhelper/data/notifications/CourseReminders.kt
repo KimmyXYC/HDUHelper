@@ -48,7 +48,7 @@ class AndroidCourseReminders(private val context: Context, private val container
     val status = mutableStatus.asStateFlow()
 
     init {
-        notifications.createNotificationChannel(NotificationChannel(CHANNEL, "课程提醒", NotificationManager.IMPORTANCE_HIGH))
+        notifications.createNotificationChannel(NotificationChannel(CHANNEL, "课程与考试提醒", NotificationManager.IMPORTANCE_HIGH))
         scope.launch { container.settings.state.map { it.notifications }.distinctUntilChanged().collect { reconcileSafely() } }
         scope.launch { container.island.state.collect { reconcileSafely() } }
         scope.launch { container.auth.sessionGeneration.collect { reconcileSafely() } }
@@ -248,19 +248,19 @@ class AndroidCourseReminders(private val context: Context, private val container
     }
 
     internal fun buildNotification(reminder: CourseReminder, id: Int, island: Boolean, silent: Boolean, now: Long, test: Boolean = false): Notification {
-        val link = Uri.Builder().scheme("hduhelper").authority("course").appendPath(reminder.accountKey)
-            .appendPath(reminder.termKey).appendPath(reminder.meeting.id).appendPath(reminder.date.toString()).build()
+        val link = Uri.Builder().scheme("hduhelper").authority(if (reminder.exam != null) "exam" else "course").appendPath(reminder.accountKey)
+            .appendPath(reminder.termKey).appendPath(reminder.itemId).appendPath(reminder.date.toString()).build()
         val open = Intent(context, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(link.takeUnless { test })
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val content = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val dismiss = PendingIntent.getBroadcast(context, id, Intent(context, CourseReminderReceiver::class.java)
             .setAction(DISMISS).setData("hduhelper://dismiss/${reminder.key}".toUri()), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val elapsed = reminder.phase(now) == CourseReminderPhase.ELAPSED
-        val label = if (elapsed) "已${reminder.kind.label}" else "距${reminder.kind.label}"
+        val label = if (elapsed) reminder.elapsedLabel else reminder.upcomingLabel
         val time = Instant.ofEpochMilli(reminder.target).atZone(campusZone).toLocalTime().toString()
-        val description = listOf(reminder.meeting.location, "$time ${reminder.kind.label}").filter { it.isNotBlank() }.joinToString(" · ")
+        val description = listOf(reminder.location, "$time ${reminder.kind.label}").filter { it.isNotBlank() }.joinToString(" · ")
         val builder = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_schedule_notification).setContentTitle("${reminder.meeting.name} · ${if (island) label else reminder.kind.label + "提醒"}")
+            .setSmallIcon(R.drawable.ic_schedule_notification).setContentTitle("${reminder.title} · ${if (island) label else reminder.kind.label + "提醒"}")
             .setContentText(description).setContentIntent(content).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setCategory(Notification.CATEGORY_EVENT).setOnlyAlertOnce(true).setAutoCancel(!island)
         if (silent) builder.setSilent(true)
@@ -270,7 +270,7 @@ class AndroidCourseReminders(private val context: Context, private val container
             val owned = reminder.key in capability.muteKeys
             val alreadySilent = capability.ringerSilent && !capability.mutedByModule
             val title = when {
-                !canMute -> "查看课程"
+                !canMute -> if (reminder.exam != null) "查看考试" else "查看课程"
                 alreadySilent -> "已静音"
                 owned -> "解除静音"
                 else -> "上课静音"

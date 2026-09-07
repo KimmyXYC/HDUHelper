@@ -75,7 +75,9 @@ class TimetableViewModel(
                     mutable.value = TimetableUiState(today = today(), settings = gate.settings.timetable)
                 }
                 val old = mutable.value
-                mutable.value = old.copy(settings = gate.settings.timetable, offline = !connected,
+                val available = old.data?.let { TimetableRules.availableWeeks(ExamRules.weeks(it, gate.settings.timetable.showExams), old.today) }
+                val week = if (available != null && old.week !in available) old.data?.let { TimetableRules.defaultWeek(ExamRules.weeks(it, gate.settings.timetable.showExams), old.today) } ?: 1 else old.week
+                mutable.value = old.copy(settings = gate.settings.timetable, offline = !connected, week = week,
                     selectedCampus = old.data?.let { d -> readCampus(d.account, d.term.key)?.takeIf { id -> d.clocks.any { it.id == id } } },
                     status = when {
                         gate.auth.status == AuthStatus.VERIFICATION_REQUIRED -> TimetableStatus.VERIFICATION_REQUIRED
@@ -109,9 +111,17 @@ class TimetableViewModel(
     }
     fun selectWeek(week: Int) {
         val data = mutable.value.data ?: return
-        if (week in TimetableRules.availableWeeks(data.weeks, mutable.value.today)) mutable.value = mutable.value.copy(week = week)
+        if (week in TimetableRules.availableWeeks(ExamRules.weeks(data, mutable.value.settings.showExams), mutable.value.today)) mutable.value = mutable.value.copy(week = week)
     }
-    fun goToDefaultWeek() { mutable.value.data?.let { selectWeek(TimetableRules.defaultWeek(it.weeks, mutable.value.today)) } }
+    fun goToDefaultWeek() {
+        mutable.value = mutable.value.copy(today = today())
+        defaultPending = true
+        mutable.value.data?.let { data ->
+            TimetableWeekRules.current(data, mutable.value.today, mutable.value.settings.showExams)?.let(::selectWeek)
+        }
+        load(defaultTerm = true, resetWeek = true, userInitiated = true)
+    }
+
     fun setSettings(value: TimetableSettings) = writeSettings(value)
     fun setCampus(value: String?) { mutable.value.data?.let { writeCampus(it.account, it.term.key, value) } }
 
@@ -132,8 +142,8 @@ class TimetableViewModel(
         fun current() = sequence == operation && identity == owner && auth.value.profile?.account == account
         fun show(data: TimetableData) {
             if (!current()) return
-            val allowed = TimetableRules.availableWeeks(data.weeks, mutable.value.today)
-            val week = if (resetDisplayedWeek || mutable.value.data?.term?.key != data.term.key || mutable.value.week !in allowed) TimetableRules.defaultWeek(data.weeks, mutable.value.today) else mutable.value.week
+            val allowed = TimetableRules.availableWeeks(ExamRules.weeks(data, mutable.value.settings.showExams), mutable.value.today)
+            val week = if (resetDisplayedWeek || mutable.value.data?.term?.key != data.term.key || mutable.value.week !in allowed) TimetableRules.defaultWeek(ExamRules.weeks(data, mutable.value.settings.showExams), mutable.value.today) else mutable.value.week
             mutable.value = mutable.value.copy(data = data, catalog = data.catalog, selectedTerm = data.term, week = week,
                 selectedCampus = readCampus(account, data.term.key)?.takeIf { id -> data.clocks.any { it.id == id } }, status = TimetableStatus.READY)
             resetDisplayedWeek = false
@@ -146,7 +156,7 @@ class TimetableViewModel(
                 val cachedTerm = if (defaultTerm) latest?.catalog?.current else requested
                 val cached = if (latest != null && latest.term.key == cachedTerm?.key) latest else cachedTerm?.let { source.cached(account, it) }
                 if (!current()) return@launch
-                if (defaultTerm && mutable.value.data?.term?.key != cachedTerm?.key) mutable.value = mutable.value.copy(data = null)
+                if (defaultTerm && mutable.value.data?.term?.key != cachedTerm?.key) mutable.value = mutable.value.copy(data = null, selectedTerm = cachedTerm)
                 if (cached != null) show(cached)
                 if (!connected) {
                     mutable.value = mutable.value.copy(status = if (mutable.value.data == null) TimetableStatus.ERROR else TimetableStatus.READY,
@@ -158,6 +168,7 @@ class TimetableViewModel(
                 val term = if (defaultTerm) catalog.current else requested ?: catalog.current
                 mutable.value = mutable.value.copy(catalog = catalog, selectedTerm = mutable.value.data?.term ?: term)
                 if (mutable.value.data?.term?.key != term.key) {
+                    if (defaultTerm) mutable.value = mutable.value.copy(data = null, selectedTerm = term)
                     source.cached(account, term)?.let(::show)
                 }
                 val silent = !userInitiated && mutable.value.data != null

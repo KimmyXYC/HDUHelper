@@ -26,6 +26,7 @@ fun TimetableSettingsScreen(state: TimetableUiState, onChange: (TimetableSetting
         Card(Modifier.fillMaxWidth()) {
             SwitchPreference(s.showOtherWeeks, { onChange(s.copy(showOtherWeeks = it)) }, "显示非本周课程", modifier = Modifier.testTag("setting_other_weeks"))
             SwitchPreference(s.showFinished, { onChange(s.copy(showFinished = it)) }, "显示已结课课程", modifier = Modifier.testTag("setting_finished"))
+            SwitchPreference(s.showExams, { onChange(s.copy(showExams = it)) }, "显示考试安排", modifier = Modifier.testTag("setting_exams"))
             SwitchPreference(s.showWeekend, { onChange(s.copy(showWeekend = it)) }, "显示周末", modifier = Modifier.testTag("setting_weekend"))
             SwitchPreference(s.showTeacher, { onChange(s.copy(showTeacher = it)) }, "显示任课老师", modifier = Modifier.testTag("setting_teacher"))
             SwitchPreference(s.showLocation, { onChange(s.copy(showLocation = it)) }, "显示上课地点", modifier = Modifier.testTag("setting_location"))

@@ -24,6 +24,8 @@ class TimetableStoreTest {
         val old=first.copy(term=AcademicTerm("2025","12"),updatedAt=2000)
         store.save(old)
         assertEquals(old,store.load(first.account))
+        assertEquals(setOf(first, old), store.loadAll(first.account).toSet())
+        assertTrue(store.loadAll("another-account").isEmpty())
         assertEquals(first,store.load(first.account,term))
         val damaged=file.readBytes();damaged[damaged.lastIndex]=(damaged.last().toInt() xor 1).toByte();file.writeBytes(damaged)
         assertNull(store.load(first.account,term))

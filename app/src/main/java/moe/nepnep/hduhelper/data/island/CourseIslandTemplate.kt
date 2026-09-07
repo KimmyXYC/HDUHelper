@@ -17,8 +17,8 @@ object CourseIslandTemplate {
 
     fun json(reminder: CourseReminder, now: Long): String {
         val elapsed = reminder.phase(now) == CourseReminderPhase.ELAPSED
-        val state = if (elapsed) "已${reminder.kind.label}" else "距${reminder.kind.label}"
-        val location = reminder.meeting.location.ifBlank { "地点待定" }
+        val state = if (elapsed) reminder.elapsedLabel else reminder.upcomingLabel
+        val location = reminder.location.ifBlank { "地点待定" }
         return buildJsonObject {
             putJsonObject("param_v2") {
                 put("protocol", 1)
@@ -32,7 +32,7 @@ object CourseIslandTemplate {
                 put("aodPic", ICON)
                 putJsonObject("baseInfo") {
                     put("type", 2)
-                    put("title", reminder.meeting.name)
+                    put("title", reminder.title)
                     put("content", "${time(reminder.courseStart)} | ${time(reminder.courseEnd)}")
                 }
                 putJsonObject("picInfo") { put("type", 1); put("pic", ICON) }

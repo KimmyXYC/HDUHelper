@@ -53,14 +53,16 @@ private val palette = listOf(0xFF2196F3, 0xFF9575CD, 0xFFEF6C35, 0xFFDAA12D, 0xF
 @Composable private fun gridBackground(): Color = if (MiuixTheme.colorScheme.surface.luminance() < .4f) Color(0xFF08090B) else Color(0xFFFAFBFD)
 
 @Composable
-fun TimetableTopBar(state: TimetableUiState, onDefault: () -> Unit, onTerm: (AcademicTerm) -> Unit) {
+fun TimetableTopBar(state: TimetableUiState, onDefault: () -> Unit, onTerm: (AcademicTerm) -> Unit, onWeek: (Int) -> Unit = {}) {
     var chooseTerm by remember { mutableStateOf(false) }
-    val title = if (state.data == null) "课表" else if (state.week == 0) "假期中" else "第${state.week}周"
+    var chooseWeek by remember(state.data?.account, state.data?.term?.key) { mutableStateOf(false) }
+    val extraWeek = state.data?.let { d -> ExamRules.weeks(d, state.settings.showExams).firstOrNull { it.week == state.week && d.weeks.none { original -> original.week == it.week } } }
+    val title = if (extraWeek != null) "考试周 · ${extraWeek.startDate.monthValue}/${extraWeek.startDate.dayOfMonth}" else if (state.data == null) "课表" else if (state.week == 0) "假期中" else "第${state.week}周"
     val first = state.data?.weeks?.minByOrNull { it.week }?.startDate
-    val subtitle = if (state.week == 0 && first != null) "离开学还有 ${ChronoUnit.DAYS.between(state.today, first).coerceAtLeast(0)} 天" else state.selectedTerm?.label.orEmpty()
+    val subtitle = if (state.week == 0 && first != null && extraWeek == null) "离开学还有 ${ChronoUnit.DAYS.between(state.today, first).coerceAtLeast(0)} 天" else state.selectedTerm?.label.orEmpty()
     Row(Modifier.fillMaxWidth().background(gridBackground()).statusBarsPadding().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.size(48.dp))
-        Column(Modifier.weight(1f).clickable(role = Role.Button, onClick = onDefault).testTag("timetable_week_title").padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.weight(1f).clickable(enabled = state.data?.let { TimetableWeekRules.available(it, state.today, state.settings.showExams).isNotEmpty() } == true, role = Role.Button, onClick = { chooseWeek = true }).testTag("timetable_week_title").padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             if (subtitle.isNotBlank()) Text(subtitle, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -68,6 +70,7 @@ fun TimetableTopBar(state: TimetableUiState, onDefault: () -> Unit, onTerm: (Aca
             Icon(painterResource(R.drawable.ic_swap_horizontal), "切换学期", it)
         }
     }
+    TimetableWeekPicker(chooseWeek, state, { chooseWeek = false }, onWeek, onDefault)
     state.catalog?.let { catalog ->
         TermPicker(chooseTerm, catalog, state.selectedTerm ?: catalog.current, { chooseTerm = false }) { chooseTerm = false; onTerm(it) }
     }
@@ -107,6 +110,11 @@ fun TimetableScreen(
     var details by remember(state.data?.account, state.data?.term?.key) { mutableStateOf<List<CourseMeeting>>(emptyList()) }
     var detailIndex by remember(state.data?.account, state.data?.term?.key) { mutableIntStateOf(0) }
     var other by remember(state.data?.account, state.data?.term?.key) { mutableStateOf<OtherArrangement?>(null) }
+    var exam by remember(state.data?.account, state.data?.term?.key) { mutableStateOf<ExamArrangement?>(null) }
+    var conflicts by remember(state.data?.account, state.data?.term?.key) { mutableStateOf<List<ExamGridItem>>(emptyList()) }
+    fun openItem(item: ExamGridItem) {
+        if (item.exam != null) exam = item.exam else { details = listOfNotNull(item.course); detailIndex = 0 }
+    }
     val data = state.data
     Column(modifier.background(gridBackground()).testTag("timetable_screen")) {
         if (state.message != null || state.offline) {
@@ -127,7 +135,7 @@ fun TimetableScreen(
                 else if (!state.refreshing && state.status != TimetableStatus.LOADING) TextButton("重试", onRefresh)
             }
         } else {
-            val weeks = remember(data.weeks, state.today) { TimetableRules.availableWeeks(data.weeks, state.today) }
+            val weeks = remember(data, state.today, state.settings.showExams) { TimetableWeekRules.available(data, state.today, state.settings.showExams) }
             if (weeks.isNotEmpty()) {
                 val pager = rememberPagerState(initialPage = weeks.indexOf(state.week).coerceAtLeast(0), pageCount = { weeks.size })
                 LaunchedEffect(state.week, weeks) {
@@ -141,11 +149,21 @@ fun TimetableScreen(
                     HorizontalPager(pager, Modifier.fillMaxSize().testTag("timetable_pager"), key = { weeks[it] }) { index ->
                         val week = weeks[index]
                         Column(Modifier.fillMaxSize()) {
-                            DateHeader(data, week, state.today, state.settings.showWeekend)
+                            val weekExams = if (state.settings.showExams) ExamRules.week(data, week) else emptyList()
+                            val settings = state.settings.copy(showWeekend = state.settings.showWeekend || weekExams.any { it.startTime!!.dayOfWeek.value > 5 })
+                            DateHeader(data, week, state.today, settings.showWeekend, settings.showExams)
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).testTag("timetable_scroll_$week")) {
-                                WeekGrid(data, week, state.settings, state.clock) { card ->
+                                if (weekExams.isNotEmpty()) ExamWeekGrid(data, week, settings, state.clock) { items ->
+                                    if (items.size == 1) openItem(items.single()) else conflicts = items
+                                } else WeekGrid(data, week, settings, state.clock) { card ->
                                     details = card.overlaps
                                     detailIndex = details.indexOfFirst { it.id == card.meeting.id }.coerceAtLeast(0)
+                                }
+                                if (settings.showExams) data.exams.message?.let { Text(it, Modifier.padding(16.dp), fontSize = 12.sp) }
+                                val untimed = if (settings.showExams) data.exams.items.filterNot { it.timed } else emptyList()
+                                if (untimed.isNotEmpty()) {
+                                    Text("考试时间待确认", Modifier.padding(16.dp), fontWeight = FontWeight.SemiBold)
+                                    untimed.forEach { item -> TextButton("${item.name} · ${item.rawTime.ifBlank { "时间待定" }}", { exam = item }) }
                                 }
                                 if (data.meetings.isEmpty() && data.others.isEmpty()) Text("该学期暂无课程", Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center)
                                 if (data.others.isNotEmpty()) {
@@ -168,7 +186,25 @@ fun TimetableScreen(
                         }
                     }
                 }
+            } else {
+                AppPullToRefresh(state.refreshing, onRefresh, Modifier.weight(1f)) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                        Text("暂无可显示的课表周次")
+                        if (state.settings.showExams) {
+                            data.exams.message?.let { Text(it) }
+                            data.exams.items.filterNot { it.timed }.forEach { item ->
+                                TextButton("考试时间待确认 · ${item.name}", { exam = item })
+                            }
+                        }
+                    }
+                }
             }
+        }
+    }
+    ExamDetails(exam, { exam = null })
+    WindowDialog(show = conflicts.isNotEmpty(), title = "重叠安排（${conflicts.size}项）", onDismissRequest = { conflicts = emptyList() }, modifier = Modifier.testTag("exam_conflicts")) {
+        Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+            conflicts.forEach { item -> TextButton("${if (item.exam != null) "考试" else "课程"} · ${item.title}", { conflicts = emptyList(); openItem(item) }) }
         }
     }
     CourseDetails(details.getOrNull(detailIndex), data?.clocks.orEmpty(), details.size, detailIndex, { details = emptyList() }) {
@@ -187,8 +223,8 @@ fun TimetableScreen(
 }
 
 @Composable
-private fun DateHeader(data: TimetableData, week: Int, today: LocalDate, weekend: Boolean) {
-    val monday = if (week == 0) today.with(DayOfWeek.MONDAY) else data.weeks.firstOrNull { it.week == week }?.startDate?.with(java.time.temporal.TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY)) ?: today.with(DayOfWeek.MONDAY)
+private fun DateHeader(data: TimetableData, week: Int, today: LocalDate, weekend: Boolean, showExams: Boolean) {
+    val monday = ExamRules.weeks(data, showExams).firstOrNull { it.week == week }?.startDate?.with(java.time.temporal.TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY)) ?: today.with(DayOfWeek.MONDAY)
     Row(Modifier.fillMaxWidth().height(48.dp)) {
         Spacer(Modifier.width(36.dp))
         repeat(if (weekend) 7 else 5) { day ->
@@ -217,40 +253,15 @@ private fun WeekGrid(data: TimetableData, week: Int, settings: TimetableSettings
         val previous = periods[section - 1]?.group
         val next = periods[section]?.group
         if (section > 1 && !previous.isNullOrBlank() && !next.isNullOrBlank() && previous != next) {
-            breaks += height to when { next.contains("下午") -> "午休"; next.contains("晚") -> "晚休"; else -> "休息" }
+            breaks += height to timetableBreakLabel(next)
             height += 24.dp
         }
         rows[section] = height
         height += rowHeight
     }
     val dark = MiuixTheme.colorScheme.surface.luminance() < .4f
-    val line = if (dark) Color(0xFF28292D) else Color(0xFFE2E5EB)
-    val muted = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val days = if (settings.showWeekend) 7 else 5
-    BoxWithConstraints(Modifier.fillMaxWidth().height(height).testTag("timetable_grid_$week")) {
-        val columnWidth = (maxWidth - 36.dp) / days
-        Canvas(Modifier.matchParentSize()) {
-            for (column in 0..days) {
-                val x = (36.dp + columnWidth * column).toPx()
-                drawLine(line, Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
-            }
-            for (y in rows.values) drawLine(line, Offset(0f, y.toPx()), Offset(size.width, y.toPx()), 1.dp.toPx())
-            drawLine(line, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-        }
-        for (section in 1..count) {
-            Column(Modifier.offset(y = rows.getValue(section)).width(36.dp).height(rowHeight).padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(section.toString(), fontSize = 14.sp)
-                periods[section]?.let { p ->
-                    Text(p.start, fontSize = 9.sp, color = muted, lineHeight = 12.sp)
-                    Text(p.end, fontSize = 9.sp, color = muted, lineHeight = 12.sp)
-                }
-            }
-        }
-        for ((top, label) in breaks) {
-            Box(Modifier.offset(y = top).fillMaxWidth().height(24.dp).background(if (dark) Color(0xFF202125) else Color(0xFFEEF0F4)), contentAlignment = Alignment.Center) {
-                Text(label, fontSize = 10.sp, color = muted)
-            }
-        }
+    TimetableGridFrame(days, height, rows, periods, breaks, Modifier.testTag("timetable_grid_$week")) { columnWidth ->
         for (card in cards) {
             // Visible fragments retain the original card's time positions after higher-priority cards cover it.
             val fragments = mutableListOf<IntRange>()
@@ -272,20 +283,30 @@ private fun WeekGrid(data: TimetableData, week: Int, settings: TimetableSettings
 
 @Composable
 private fun CourseCard(card: MeetingCard, dark: Boolean, settings: TimetableSettings, modifier: Modifier, onClick: () -> Unit) {
-    val active = card.state == MeetingState.CURRENT
-    val accent = Color(palette[Math.floorMod(card.meeting.courseKey.hashCode(), palette.size)])
+    TimetableArrangementCard(card.meeting.name, card.meeting.courseKey, card.meeting.location, card.meeting.teacher,
+        card.state == MeetingState.CURRENT, dark, settings, modifier, card.overlaps.size, onClick = onClick)
+}
+
+@Composable
+internal fun TimetableArrangementCard(title: String, colorKey: String, location: String, teacher: String,
+    active: Boolean, dark: Boolean, settings: TimetableSettings, modifier: Modifier, overlaps: Int,
+    badge: String? = null, time: String? = null, onClick: () -> Unit,
+) {
+    val accent = Color(palette[Math.floorMod(colorKey.hashCode(), palette.size)])
     val text = if (active) (if (dark) accent else Color(androidx.core.graphics.ColorUtils.blendARGB(accent.toArgb(), 0xFF172038.toInt(), .25f))) else if (dark) Color(0xFF777A82) else Color(0xFF9699A1)
     val background = if (active) accent.copy(alpha = if (dark) .18f else .13f).compositeOver(gridBackground()) else if (dark) Color(0xFF1B1D21) else Color(0xFFEBEDF1)
     BoxWithConstraints(modifier.clip(RoundedCornerShape(7.dp)).background(background).clickable(role = Role.Button, onClick = onClick).clipToBounds()) {
         val compact = maxHeight < 85.dp
         Column(Modifier.padding(horizontal = 5.dp, vertical = 8.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(card.meeting.name, color = text, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium,
+            Text(title, color = text, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium,
                 maxLines = if (compact) 2 else 5, overflow = TextOverflow.Ellipsis)
-            if (settings.showLocation && card.meeting.location.isNotBlank()) Text("@${card.meeting.location}", color = text.copy(alpha = .85f), fontSize = 11.sp, lineHeight = 14.sp, maxLines = if (compact) 1 else 3, overflow = TextOverflow.Ellipsis)
-            if (settings.showTeacher && card.meeting.teacher.isNotBlank()) Text(card.meeting.teacher, color = text.copy(alpha = .85f), fontSize = 11.sp, lineHeight = 14.sp, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
+            if (badge != null) Text(badge, color = text, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1)
+            if (time != null && !compact) Text(time, color = text.copy(alpha = .85f), fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1)
+            if (settings.showLocation && location.isNotBlank()) Text("@$location", color = text.copy(alpha = .85f), fontSize = 11.sp, lineHeight = 14.sp, maxLines = if (compact) 1 else 3, overflow = TextOverflow.Ellipsis)
+            if (settings.showTeacher && teacher.isNotBlank()) Text(teacher, color = text.copy(alpha = .85f), fontSize = 11.sp, lineHeight = 14.sp, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
         }
-        if (card.overlaps.size > 1) Canvas(Modifier.align(Alignment.BottomEnd).size(13.dp).semantics { contentDescription = "此时间段有${card.overlaps.size}项安排" }) {
-            drawPath(Path().apply { moveTo(size.width, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }, text)
+        if (overlaps > 1) Box(Modifier.align(Alignment.BottomEnd).semantics { contentDescription = "此时间段有${overlaps}项安排" }) {
+            Text(overlaps.toString(), Modifier.padding(horizontal = 3.dp), color = text, fontSize = 9.sp)
         }
     }
 }
@@ -312,7 +333,7 @@ fun CourseDetails(meeting: CourseMeeting?, clocks: List<CampusClock>, total: Int
     }
 }
 
-@Composable private fun DetailLine(label: String, value: String) {
+@Composable internal fun DetailLine(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(label, Modifier.width(40.dp), fontSize = 13.sp, color = MiuixTheme.colorScheme.primary)
         Text(value.ifBlank { "未提供" }, Modifier.weight(1f), fontSize = 15.sp, lineHeight = 22.sp)

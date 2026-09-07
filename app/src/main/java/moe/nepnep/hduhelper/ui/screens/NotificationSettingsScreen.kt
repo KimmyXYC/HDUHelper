@@ -62,14 +62,14 @@ fun NotificationSettingsPage(settings: NotificationSettings, status: CourseNotif
     }
     LifecycleResumeEffect(Unit) { onRefresh(); onPauseOrDispose {} }
     LaunchedEffect(Unit) {
-        if ((settings.beforeClass || settings.afterClass) && claimPrompt() &&
+        if ((settings.beforeClass || settings.afterClass || settings.beforeExam) && claimPrompt() &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
     NotificationSettingsScreen(settings, status, { next ->
         onChange(next)
-        if ((!settings.beforeClass && next.beforeClass || !settings.afterClass && next.afterClass) && !status.notifications) requestNotifications()
+        if ((!settings.beforeClass && next.beforeClass || !settings.afterClass && next.afterClass || !settings.beforeExam && next.beforeExam) && !status.notifications) requestNotifications()
     }, onNotifications = {
         // The explicit permission row always offers system settings, including permanent denial.
         open(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -115,6 +115,7 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
         when (choosing) {
             "start" -> onChange(settings.copy(beforeMinutes = value))
             "end" -> onChange(settings.copy(afterMinutes = value))
+            "exam" -> onChange(settings.copy(examMinutes = value))
             else -> return
         }
         closeTime()
@@ -140,11 +141,16 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
             if (settings.afterClass) ArrowPreference("提前时间", summary = reminderTimeLabel(settings.afterMinutes),
                 onClick = { openTime("end", settings.afterMinutes) }, modifier = Modifier.testTag("notify_end_time"))
         }
+        Card(Modifier.fillMaxWidth()) {
+            SwitchPreference(settings.beforeExam, { onChange(settings.copy(beforeExam = it)) }, "考试开始提醒", modifier = Modifier.testTag("notify_exam"))
+            if (settings.beforeExam) ArrowPreference("提前时间", summary = reminderTimeLabel(settings.examMinutes),
+                onClick = { openTime("exam", settings.examMinutes) }, modifier = Modifier.testTag("notify_exam_time"))
+        }
         TextButton("测试通知", onTest, Modifier.fillMaxWidth().testTag("notify_test"), enabled = testEnabled,
             colors = ButtonDefaults.textButtonColors(color = MiuixTheme.colorScheme.primary, textColor = MiuixTheme.colorScheme.onPrimary))
         Text("提醒权限", style = MiuixTheme.textStyles.title4, color = MiuixTheme.colorScheme.onSurface)
         Card(Modifier.fillMaxWidth()) {
-            ArrowPreference("通知权限", summary = if (status.notifications) "已开启" else "未开启，课程提醒不可用", onClick = onNotifications, modifier = Modifier.testTag("notify_permission"))
+            ArrowPreference("通知权限", summary = if (status.notifications) "已开启" else "未开启，课程与考试提醒不可用", onClick = onNotifications, modifier = Modifier.testTag("notify_permission"))
             ArrowPreference("精确提醒", summary = if (status.exact) "已开启" else "未开启，提醒可能延迟", onClick = onExact)
             ArrowPreference("自启动", summary = permissionLabel(background.autostart, "已开启", "未开启"),
                 onClick = onAutostart, modifier = Modifier.testTag("notify_autostart"))
@@ -166,7 +172,7 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
             TextButton("关闭", { batteryDialog = false }, Modifier.fillMaxWidth().testTag("notify_battery_close"))
         }
     }
-    WindowDialog(show = choosing != null, title = if (choosing == "start") "上课提醒时间" else "下课提醒时间",
+    WindowDialog(show = choosing != null, title = if (choosing == "start") "上课提醒时间" else if (choosing == "exam") "考试提醒时间" else "下课提醒时间",
         onDismissRequest = ::closeTime, modifier = Modifier.testTag("notify_time_picker")) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             TextField(minutesInput, { value ->

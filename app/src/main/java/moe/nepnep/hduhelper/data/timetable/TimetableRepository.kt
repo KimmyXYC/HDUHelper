@@ -39,10 +39,38 @@ class TimetableRepository(
         if (auth.isCurrent(identity) && version == epoch.get()) data else null
     }
 
+    override suspend fun cachedTerms(account: String): List<TimetableData> = withContext(io) {
+        val identity = auth.serviceIdentity()?.takeIf { it.account == account } ?: return@withContext emptyList()
+        val version = epoch.get()
+        val data = store.loadAll(account)
+        if (auth.isCurrent(identity) && version == epoch.get()) data else emptyList()
+    }
+
     override suspend fun catalog(): TimetableCatalog = operation { active, _, _ -> active.catalog() }
 
     override suspend fun refresh(term: AcademicTerm, catalog: TimetableCatalog): TimetableData = operation { active, identity, captured ->
-        val result = active.fetch(identity.account, term, catalog)
+        val courses = active.fetch(identity.account, term, catalog)
+        val exams = try {
+            try {
+                active.fetchExams(identity.account, term)
+            } catch (e: TimetableException) {
+                if (e.kind != TimetableFailure.AUTHORIZATION) throw e
+                session.set(null)
+                val ticket = auth.authorizeService(identity, endpoints.service)
+                check(identity, captured)
+                val recovered = factory.create()
+                recovered.authorize(ticket)
+                check(identity, captured)
+                session.set(identity to recovered)
+                recovered.fetchExams(identity.account, term)
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
+            check(identity, captured)
+            if (e is TimetableException && e.kind == TimetableFailure.AUTHORIZATION) session.set(null)
+            (store.load(identity.account, term)?.exams ?: ExamSnapshot()).copy(failed = true)
+        }
+        val result = courses.copy(exams = exams)
         check(identity, captured)
         synchronized(publication) {
             // Never acquire auth's lock under publication: invalidation callbacks run while auth holds it.

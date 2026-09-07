@@ -173,7 +173,7 @@ class CourseReminderDeviceTest {
         assumeTrue(first != null && second != null)
         first!!; second!!
         val link = Uri.Builder().scheme("hduhelper").authority("course").appendPath(first.accountKey).appendPath(first.termKey)
-            .appendPath(first.meeting.id).appendPath(first.date.toString()).build()
+            .appendPath(first.itemId).appendPath(first.date.toString()).build()
         val launch = Intent(context, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(link)
         var scenario: ActivityScenario<MainActivity>? = null
         val notification = container.courseReminders.buildNotification(second, 999998, false, true, System.currentTimeMillis())

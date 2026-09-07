@@ -35,7 +35,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
 private data class AgendaRow(val key: String, val title: String, val subtitle: String, val start: LocalDateTime?,
-    val allDay: Boolean = false, val occurrence: ScheduleOccurrence? = null, val course: CourseMeeting? = null)
+    val allDay: Boolean = false, val occurrence: ScheduleOccurrence? = null, val course: CourseMeeting? = null, val exam: ExamArrangement? = null)
 
 fun scheduleTimeLabel(event: ScheduleEvent): String {
     val start = event.startTime
@@ -61,6 +61,7 @@ fun ScheduleScreen(
 ) {
     var chooseDate by remember { mutableStateOf(false) }
     var course by remember(state.courses?.account, state.courses?.term?.key, state.date) { mutableStateOf<CourseMeeting?>(null) }
+    var exam by remember(state.courses?.account, state.courses?.term?.key, state.date) { mutableStateOf<ExamArrangement?>(null) }
     var operation by remember(state.detailKey) { mutableStateOf<String?>(null) }
     val detail = state.detail
     val repeated = state.storage.book.series.firstOrNull { it.id == detail?.seriesId }?.event?.repeat?.let { it != ScheduleRepeat.NEVER } == true
@@ -93,7 +94,7 @@ fun ScheduleScreen(
             AppPullToRefresh(state.refreshing, onRefresh, Modifier.weight(1f),
                 enabled = state.courseStatus in setOf(TimetableStatus.READY, TimetableStatus.ERROR)) {
                 HorizontalPager(pager, Modifier.fillMaxSize().testTag("schedule_pager"), key = { origin.plusDays(it.toLong() - middle).toString() }) { page ->
-                    ScheduleDayList(state, origin.plusDays(page.toLong() - middle), onDetail, { course = it }, onRetryStorage)
+                    ScheduleDayList(state, origin.plusDays(page.toLong() - middle), onDetail, { course = it }, { exam = it }, onRetryStorage)
                 }
             }
         }
@@ -104,6 +105,8 @@ fun ScheduleScreen(
     }
     AppDatePicker(chooseDate, state.date, { chooseDate = false }, { chooseDate = false; onDate(it) })
     val linkedCourse = data?.let { ScheduleRules.courses(it, state.date) }?.firstOrNull { it.id == state.courseDetailId }
+    val linkedExam = data?.let { ExamRules.onDate(it, state.date) }?.firstOrNull { it.id == state.examDetailId }
+    ExamDetails(exam ?: linkedExam, { exam = null; onDetail(null) })
     CourseDetails(course ?: linkedCourse, data?.clocks.orEmpty(), 1, 0, { course = null; onDetail(null) }, {})
     WindowDialog(show = detail != null && operation == null, title = detail?.event?.title, onDismissRequest = { onDetail(null) }, modifier = Modifier.testTag("schedule_details")) {
         detail?.let { occurrence ->
@@ -150,7 +153,7 @@ fun ScheduleTopBar(onAdd: () -> Unit) {
 
 @Composable
 private fun ScheduleDayList(state: ScheduleUiState, date: LocalDate, onDetail: (String?) -> Unit,
-    onCourse: (CourseMeeting) -> Unit, onRetryStorage: () -> Unit) {
+    onCourse: (CourseMeeting) -> Unit, onExam: (ExamArrangement) -> Unit, onRetryStorage: () -> Unit) {
     val data = state.courses
     val rows = remember(state.storage.book, data, date) {
         val custom = state.storage.book.series.flatMap { ScheduleRules.occurrences(it, date) }.map { occurrence ->
@@ -163,7 +166,10 @@ private fun ScheduleDayList(state: ScheduleUiState, date: LocalDate, onDetail: (
                 listOf(TimetableRules.timeText(meeting, d.clocks), "第${meeting.rawSections.removeSuffix("节")}节", meeting.location, meeting.teacher)
                     .filter { it.isNotBlank() }.joinToString(" · "), ScheduleRules.courseStart(meeting, d.clocks)?.atDate(date), course = meeting)
         } }.orEmpty()
-        (custom + courses).sortedWith(compareByDescending<AgendaRow> { it.allDay }.thenBy { it.start ?: LocalDateTime.MAX }.thenBy { it.key })
+        val exams = data?.let { ExamRules.onDate(it, date) }.orEmpty().map {
+            AgendaRow("exam/${it.id}", it.name, listOf(it.rawTime, it.place).filter { text -> text.isNotBlank() }.joinToString(" · "), it.startTime, exam = it)
+        }
+        (custom + courses + exams).sortedWith(compareByDescending<AgendaRow> { it.allDay }.thenBy { it.start ?: LocalDateTime.MAX }.thenBy { it.key })
     }
     val message = when (state.courseStatus) {
         TimetableStatus.SIGNED_OUT -> null
@@ -180,6 +186,12 @@ private fun ScheduleDayList(state: ScheduleUiState, date: LocalDate, onDetail: (
     }
     LazyColumn(Modifier.fillMaxSize().testTag("schedule_list_$date"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (message != null) item { Text(message, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+        data?.exams?.message?.let { item { Text(it, style = MiuixTheme.textStyles.footnote1) } }
+        val untimed = data?.exams?.items.orEmpty().filterNot { it.timed }
+        if (untimed.isNotEmpty()) item {
+            Text("考试时间待确认", style = MiuixTheme.textStyles.title4)
+            untimed.forEach { exam -> TextButton("${exam.name} · ${exam.rawTime.ifBlank { "时间待定" }}", { onExam(exam) }) }
+        }
         if (state.storage.error != null) item {
             Text(state.storage.error, color = MiuixTheme.colorScheme.error)
             TextButton("重试读取日程", onRetryStorage)
@@ -197,10 +209,10 @@ private fun ScheduleDayList(state: ScheduleUiState, date: LocalDate, onDetail: (
         }
         items(rows, key = { it.key }) { row ->
             Card(Modifier.fillMaxWidth().clickable {
-                if (row.course != null) onCourse(row.course) else onDetail(row.occurrence?.key)
+                if (row.exam != null) onExam(row.exam) else if (row.course != null) onCourse(row.course) else onDetail(row.occurrence?.key)
             }.testTag("agenda_${row.key}")) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (row.course != null) "课程" else "自定义日程", style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
+                    Text(if (row.exam != null) "考试" else if (row.course != null) "课程" else "自定义日程", style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
                     Text(row.title, style = MiuixTheme.textStyles.title4)
                     Text(row.subtitle, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.body2)
                 }

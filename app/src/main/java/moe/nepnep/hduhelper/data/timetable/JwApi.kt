@@ -22,6 +22,7 @@ class JwEndpoints(
     val service: HttpUrl = "http://newjw.hdu.edu.cn/sso/driot4login".toHttpUrl(),
 ) {
     val index = origin.resolve("/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default")!!
+    val examIndex = origin.resolve("/jwglxt/kwgl/kscx_cxXsksxxIndex.html?gnmkdm=N358105&layout=default")!!
     internal fun accepts(url: HttpUrl): Boolean = url.scheme == origin.scheme && url.host == origin.host && url.port == origin.port &&
         url.username.isEmpty() && url.password.isEmpty() && url.fragment == null
 
@@ -110,12 +111,34 @@ class JwApi(private val endpoints: JwEndpoints = JwEndpoints(), private val now:
             return TimetableData(account, term, catalog, courses.meetings, courses.others, calendar, clocks, now(), warnings.distinct())
         }
 
+        override suspend fun fetchExams(account: String, term: AcademicTerm): ExamSnapshot {
+            val all = mutableListOf<ExamArrangement>()
+            var page = 1
+            var expectedTotal: Int? = null
+            while (true) {
+                val result = ExamParser.page(post("/jwglxt/kwgl/kscx_cxXsksxxIndex.html?doType=query&gnmkdm=N358105", linkedMapOf(
+                    "xnm" to term.year, "xqm" to term.code, "ksmcdmb_id" to "", "kch" to "", "kc" to "", "ksrq" to "", "kkbm_id" to "",
+                    "_search" to "false", "queryModel.showCount" to "100", "queryModel.currentPage" to page.toString(),
+                    "queryModel.sortName" to " ", "queryModel.sortOrder" to "asc",
+                )), account, term)
+                if (result.page != page || result.pages !in 0..1000 || result.total < 0 ||
+                    expectedTotal?.let { it != result.total } == true || (result.pages > page && result.items.isEmpty())) protocol()
+                expectedTotal = result.total
+                all += result.items
+                if (page >= result.pages) {
+                    if (all.size != result.total) protocol()
+                    return ExamSnapshot(all.distinctBy { it.id }, now())
+                }
+                page++
+            }
+        }
+
         private suspend fun get(url: HttpUrl): String = query(Request.Builder().url(url).build())
         private suspend fun post(path: String, values: Map<String, String>): String = query(Request.Builder()
             .url(endpoints.origin.resolve(path)!!).post(FormBody.Builder().apply { values.forEach { (k, v) -> add(k, v) } }.build()).build())
 
         private suspend fun query(request: Request): String = response(request.newBuilder()
-            .header("X-Requested-With", "XMLHttpRequest").header("Referer", endpoints.index.toString()).build()).use { r ->
+            .header("X-Requested-With", "XMLHttpRequest").header("Referer", (if (request.url.encodedPath == endpoints.examIndex.encodedPath) endpoints.examIndex else endpoints.index).toString()).build()).use { r ->
             if (r.code in redirects) {
                 val target = r.header("Location")?.let { request.url.resolve(it) }
                 if (target?.encodedPath?.contains("login", ignoreCase = true) == true) expired()

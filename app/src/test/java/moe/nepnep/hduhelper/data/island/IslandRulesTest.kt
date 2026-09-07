@@ -54,7 +54,7 @@ class IslandRulesTest {
     @Test fun templateHasIndependentLocationTimeAndRealSystemTimer() {
         val reminder = reminder(CourseReminderKind.START)
         val payload = Json.parseToJsonElement(CourseIslandTemplate.json(reminder, 940_000)).jsonObject["param_v2"]!!.jsonObject
-        assertEquals(reminder.meeting.name, payload["baseInfo"]!!.jsonObject["title"]!!.jsonPrimitive.content)
+        assertEquals(reminder.title, payload["baseInfo"]!!.jsonObject["title"]!!.jsonPrimitive.content)
         val hint = payload["hintInfo"]!!.jsonObject
         assertEquals(2, hint["type"]!!.jsonPrimitive.int)
         assertEquals("教科A-101", hint["subTitle"]!!.jsonPrimitive.content)

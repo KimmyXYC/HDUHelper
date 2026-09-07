@@ -56,6 +56,13 @@ object ScheduleRules {
         }.toList()
     }
 
+    fun matchesDate(data: TimetableData, date: LocalDate): Boolean =
+        data.weeks.any { date in it.startDate..it.endDate } || ExamRules.onDate(data, date).isNotEmpty()
+
+    fun termForDate(cached: List<TimetableData>, date: LocalDate): TimetableData? = cached.filter { matchesDate(it, date) }
+        .sortedWith(compareByDescending<TimetableData> { ExamRules.onDate(it, date).isNotEmpty() }
+            .thenByDescending { it.term.key == it.catalog.current.key }.thenByDescending { it.updatedAt }).firstOrNull()
+
     fun courses(data: TimetableData, date: LocalDate): List<CourseMeeting> {
         val week = data.weeks.firstOrNull { date >= it.startDate && date <= it.endDate }?.week ?: return emptyList()
         return data.meetings.filter { it.weekday == date.dayOfWeek.value && week in it.weeks }

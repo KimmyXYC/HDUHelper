@@ -28,7 +28,7 @@ fun AboutScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(28.dp)) {
+        Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(horizontal = 16.dp, vertical = 28.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(stringResource(R.string.app_name), style = MiuixTheme.textStyles.title1)
                 Text("版本 ${BuildConfig.VERSION_NAME}", style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

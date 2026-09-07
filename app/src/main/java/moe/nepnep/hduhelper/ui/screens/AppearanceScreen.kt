@@ -13,6 +13,7 @@ import moe.nepnep.hduhelper.data.settings.ThemeMode
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonLocation
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -22,6 +23,7 @@ fun AppearanceScreen(theme: ThemeMode, onThemeChange: (ThemeMode) -> Unit, modif
         Card(Modifier.fillMaxWidth()) {
             ThemeMode.entries.forEach { mode ->
                 RadioButtonPreference(
+                    radioButtonLocation = RadioButtonLocation.End,
                     title = mode.label,
                     selected = theme == mode,
                     onClick = { onThemeChange(mode) },

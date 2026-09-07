@@ -31,7 +31,6 @@ data class ExamSnapshot(val items: List<ExamArrangement> = emptyList(), val upda
     val message: String? get() = when {
         failed -> if (updatedAt == null) "考试同步失败，请下拉重试" else "考试更新失败，显示上次同步的安排"
         updatedAt == null -> "考试尚未同步，请下拉刷新"
-        items.isEmpty() -> "该学期暂无考试安排"
         else -> null
     }
     override fun toString() = "ExamSnapshot([redacted])"

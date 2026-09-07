@@ -14,6 +14,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonLocation
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -43,8 +44,8 @@ fun TimetableSettingsScreen(state: TimetableUiState, onChange: (TimetableSetting
         else {
             Text(state.data.term.label, style = MiuixTheme.textStyles.footnote1)
             Card(Modifier.fillMaxWidth()) {
-                RadioButtonPreference(selected = state.selectedCampus == null, onClick = { onCampus(null) }, title = "自动选择", modifier = Modifier.testTag("campus_auto"))
-                for (campus in state.data.clocks) RadioButtonPreference(selected = state.selectedCampus == campus.id, onClick = { onCampus(campus.id) }, title = campus.name, modifier = Modifier.testTag("campus_${campus.id}"))
+                RadioButtonPreference(radioButtonLocation = RadioButtonLocation.End, selected = state.selectedCampus == null, onClick = { onCampus(null) }, title = "自动选择", modifier = Modifier.testTag("campus_auto"))
+                for (campus in state.data.clocks) RadioButtonPreference(radioButtonLocation = RadioButtonLocation.End, selected = state.selectedCampus == campus.id, onClick = { onCampus(campus.id) }, title = campus.name, modifier = Modifier.testTag("campus_${campus.id}"))
             }
         }
         when (state.status) {

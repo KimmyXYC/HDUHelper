@@ -59,6 +59,10 @@ class CampusCodeViewModel(
     private var activeScope: CoroutineScope? = null
     private var request: Job? = null
     private var interval = 300L
+    // Cache validity and the automatic refresh countdown share this deadline.
+    private var validUntil = 0L
+    private data class CachedCode(val code: CampusCode, val image: QrPixels)
+    private var cachedCode: CachedCode? = null
     private data class Gate(val visible: Boolean, val online: Boolean, val account: String?, val generation: Long, val blocked: AuthStatus?)
 
     init {
@@ -69,7 +73,12 @@ class CampusCodeViewModel(
                     state.status.takeIf { it in listOf(AuthStatus.LOADING, AuthStatus.SIGNING_IN, AuthStatus.VERIFICATION_REQUIRED) })
             }.distinctUntilChanged().collectLatest { gate ->
                 val identity = gate.account to gate.generation
-                if (identity != previousIdentity) { source.clear(); previousIdentity = identity }
+                if (identity != previousIdentity) {
+                    source.clear()
+                    cachedCode = null
+                    previousIdentity = identity
+                }
+                if (!gate.online || gate.account == null || gate.blocked != null) cachedCode = null
                 mutableState.value = when {
                     gate.blocked == AuthStatus.VERIFICATION_REQUIRED -> CampusCodeUiState(CampusCodeStatus.VERIFICATION_REQUIRED, message = "请完成官方身份验证")
                     gate.blocked != null -> CampusCodeUiState(CampusCodeStatus.AUTHORIZING, message = "正在读取登录状态…")
@@ -82,14 +91,25 @@ class CampusCodeViewModel(
                     activeScope = this
                     interval = 300L
                     try {
-                        refresh()?.join()
-                        var deadline = elapsed() + interval * 1000
+                        val cached = cachedCode?.takeIf { validUntil - elapsed() > 30_000L }
+                        if (cached != null) {
+                            interval = cached.code.refreshSeconds
+                            mutableState.value = CampusCodeUiState(
+                                status = CampusCodeStatus.READY,
+                                code = cached.code,
+                                image = cached.image,
+                            )
+                        } else {
+                            cachedCode = null
+                            refresh()?.join()
+                            validUntil = elapsed() + interval * 1000
+                        }
                         while (isActive) {
-                            val left = deadline - elapsed()
+                            val left = validUntil - elapsed()
                             mutableState.value = mutableState.value.copy(nextRefreshSeconds = ((left + 999) / 1000).coerceAtLeast(0))
                             if (left <= 0) {
                                 if (mutableState.value.status !in listOf(CampusCodeStatus.LOGIN_REQUIRED, CampusCodeStatus.VERIFICATION_REQUIRED)) refresh()
-                                deadline = elapsed() + interval * 1000
+                                validUntil = elapsed() + interval * 1000
                             }
                             delay(250)
                         }
@@ -112,7 +132,7 @@ class CampusCodeViewModel(
         }
     }
 
-    /** The periodic deadline is intentionally independent of manual requests. */
+    /** Manual requests replace the code without extending its validity or countdown. */
     fun refresh(): Job? {
         val scope = activeScope ?: return null
         if (request?.isActive == true) return request
@@ -122,10 +142,12 @@ class CampusCodeViewModel(
                 val code = source.refresh()
                 val image = withContext(compute) { QrCodeEncoder.encode(code.content) }
                 interval = code.refreshSeconds
+                cachedCode = CachedCode(code, image)
                 mutableState.value = mutableState.value.copy(status = CampusCodeStatus.READY, code = code, image = image, refreshing = false)
             } catch (e: CancellationException) { throw e }
             catch (e: AuthException) {
                 if (e.kind == AuthFailure.CANCELLED) return@launch
+                cachedCode = null
                 val status = when (e.kind) {
                     AuthFailure.EXPIRED, AuthFailure.CREDENTIALS -> CampusCodeStatus.LOGIN_REQUIRED
                     AuthFailure.VERIFICATION -> CampusCodeStatus.VERIFICATION_REQUIRED
@@ -133,14 +155,16 @@ class CampusCodeViewModel(
                 }
                 mutableState.value = CampusCodeUiState(status, message = e.message)
             } catch (e: CampusCodeException) {
+                cachedCode = null
                 mutableState.value = CampusCodeUiState(CampusCodeStatus.ERROR, message = e.message)
             } catch (_: Exception) {
+                cachedCode = null
                 mutableState.value = CampusCodeUiState(CampusCodeStatus.ERROR, message = "暂时无法生成二维码，请重试")
             }
         }.also { request = it }
     }
 
-    override fun onCleared() { source.clear() }
+    override fun onCleared() { cachedCode = null; source.clear() }
 
     companion object {
         fun factory(container: AppContainer): ViewModelProvider.Factory = object : ViewModelProvider.Factory {

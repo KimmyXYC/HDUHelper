@@ -22,6 +22,8 @@ python3 tools/test-build-version.py
 
 `RuntimeCompatibilityTest` 使用独立临时目录和 Keystore 密钥，离线检查加密存储、序列化及一码通算法，不接触原有账号。
 
+`CampusCodeViewModelTest` 验证一码通的二维码缓存有效期与自动刷新倒计时共用同一个截止时间：离开页面后停止刷新，返回时剩余有效期大于 30 秒则复用缓存，否则重新获取并开始新周期。手动刷新只替换二维码内容，不延长有效期或重置倒计时，切换页面后仍沿用原截止时间。测试还覆盖账号、会话、网络、验证状态变化后的缓存失效；二维码不持久化到磁盘。
+
 可通过 instrumentation 参数选择 `ProfileUiTest`、`CampusCodeUiTest`、`TimetableUiTest` 或 `TimetableNavigationTest`：
 
 ```sh

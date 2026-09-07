@@ -1,0 +1,3 @@
+# Error Prone's compile-time annotations in the test dependencies reference a
+# JDK compiler enum unavailable on Android. No runtime code uses this enum.
+-dontwarn javax.lang.model.element.Modifier

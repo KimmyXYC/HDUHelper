@@ -1,0 +1,12 @@
+// Opt-in device testing against R8-optimized release code. Normal builds keep
+// their default debug test target; production keep rules are not weakened.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.testBuildType = 'release'
+            android.buildTypes.getByName('release').testProguardFiles(
+                project.file('src/androidTest/keepRules/rules.keep')
+            )
+        }
+    }
+}

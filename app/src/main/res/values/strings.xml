@@ -1,5 +1,9 @@
 <resources>
-    <string name="app_name">HDUHelper</string>
+    <string name="app_name">杭电助手</string>
+    <string name="logout_title">退出登录</string>
+    <string name="logout_message">确定要退出当前账号吗？</string>
+    <string name="logout_cancel">取消</string>
+    <string name="logout_confirm">确认退出</string>
     <string name="nav_schedule">日程</string>
     <string name="nav_timetable">课表</string>
     <string name="nav_campus_code">一码通</string>

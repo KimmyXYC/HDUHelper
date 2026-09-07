@@ -23,6 +23,8 @@
 
 ## 开发与测试
 
+课表页面实现前的协议调研见 [教务系统 SSO 登录与课表解析分析](docs/jw-sso-timetable-analysis.md)，包含实际跳转链、`N2151` 来源、JSON 接口、校历作息与解析边界。
+
 使用 Android Studio 打开项目，SDK 路径由本机 `local.properties` 配置。
 
 ```sh

@@ -6,19 +6,31 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.test.espresso.Espresso.pressBack
+import androidx.test.platform.app.InstrumentationRegistry
 import moe.nepnep.hduhelper.data.auth.AuthState
 import moe.nepnep.hduhelper.data.auth.AuthStatus
+import moe.nepnep.hduhelper.data.auth.UserProfile
 import moe.nepnep.hduhelper.data.settings.AppSettings
 import moe.nepnep.hduhelper.data.settings.ThemeMode
 import moe.nepnep.hduhelper.ui.LoginFormState
 import moe.nepnep.hduhelper.ui.screens.AppearanceScreen
+import moe.nepnep.hduhelper.ui.screens.AboutScreen
 import moe.nepnep.hduhelper.ui.screens.LoginScreen
 import moe.nepnep.hduhelper.ui.screens.ProfileScreen
 import moe.nepnep.hduhelper.ui.theme.HDUHelperTheme
@@ -45,10 +57,120 @@ class ProfileUiTest {
         }
         compose.onNodeWithText("自动登录").assertDoesNotExist()
         compose.onNodeWithText("登录数字杭电").assertDoesNotExist()
+        compose.onNodeWithTag("logout").assertDoesNotExist()
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.onNodeWithText("杭电助手").assertIsDisplayed()
         compose.onNodeWithText("未登录").performClick()
         compose.onNodeWithText("外观设置").performClick()
         compose.runOnIdle { assertEquals(1, loginClicks); assertEquals(1, appearanceClicks) }
     }
+
+    @Test fun aboutAndLauncherUseChineseAppName() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertEquals("杭电助手", context.applicationInfo.loadLabel(context.packageManager).toString())
+        compose.setContent { HDUHelperTheme { AboutScreen(Modifier.fillMaxSize()) } }
+        compose.onNodeWithText("杭电助手").assertIsDisplayed()
+        compose.onNodeWithText("HDUHelper").assertDoesNotExist()
+    }
+
+    @Test fun logoutRequiresConfirmationInLightTheme() = verifyLogoutConfirmation(darkTheme = false)
+
+    @Test fun logoutRequiresConfirmationInDarkTheme() = verifyLogoutConfirmation(darkTheme = true)
+
+    private fun verifyLogoutConfirmation(darkTheme: Boolean) {
+        var logoutCalls = 0
+        compose.setContent {
+            HDUHelperTheme(darkTheme = darkTheme) {
+                ProfileScreen(
+                    auth = signedInState(), settings = AppSettings(),
+                    onLogin = {}, onAppearance = {}, onLogout = { logoutCalls++ },
+                    onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        compose.onNodeWithTag("logout").performScrollTo().performClick()
+        compose.onNodeWithText("确定要退出当前账号吗？").assertIsDisplayed()
+        compose.onNodeWithText("取消").assertIsDisplayed()
+        compose.onNodeWithText("确认退出").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, logoutCalls) }
+
+        val bitmap = compose.onNodeWithTag("logout_confirmation").captureToImage().asAndroidBitmap()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val theme = if (darkTheme) "dark" else "light"
+        java.io.File(context.cacheDir, "logout-$theme.png").outputStream().use {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, logoutCalls) }
+        compose.onNodeWithTag("logout").performClick()
+        // Invoke the same action twice before recomposition to cover rapid repeat confirmation.
+        val confirm = compose.onNodeWithTag("confirm_logout").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnIdle { confirm(); confirm(); assertEquals(1, logoutCalls) }
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+    }
+
+    @Test fun backDismissesLogoutWithoutSigningOut() = verifyLogoutDismissal { pressBack() }
+
+    @Test fun outsideTapDismissesLogoutWithoutSigningOut() = verifyLogoutDismissal {
+        compose.onNode(isDialog()).performTouchInput { click(Offset(center.x, height * 0.1f)) }
+    }
+
+    private fun verifyLogoutDismissal(dismiss: () -> Unit) {
+        var logoutCalls = 0
+        compose.setContent {
+            HDUHelperTheme {
+                ProfileScreen(
+                    auth = signedInState(), settings = AppSettings(),
+                    onLogin = {}, onAppearance = {}, onLogout = { logoutCalls++ },
+                    onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        compose.onNodeWithTag("logout").performScrollTo().performClick()
+        compose.onNodeWithText("确定要退出当前账号吗？").assertIsDisplayed()
+        dismiss()
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("logout").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, logoutCalls) }
+    }
+
+    @Test fun logoutConfirmationIsDiscardedAfterSignOutOrLeavingProfile() {
+        var auth by mutableStateOf(signedInState())
+        var showProfile by mutableStateOf(true)
+        var logoutCalls = 0
+        compose.setContent {
+            HDUHelperTheme {
+                if (showProfile) {
+                    ProfileScreen(
+                        auth = auth, settings = AppSettings(),
+                        onLogin = {}, onAppearance = {}, onLogout = { logoutCalls++ },
+                        onAbout = {}, onVerify = {}, modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("logout").performScrollTo().performClick()
+        compose.onNodeWithText("确定要退出当前账号吗？").assertIsDisplayed()
+        compose.runOnIdle { auth = AuthState(AuthStatus.SIGNED_OUT) }
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("logout").assertDoesNotExist()
+        compose.runOnIdle { auth = signedInState() }
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.onNodeWithTag("logout").performScrollTo().performClick()
+        compose.onNodeWithText("确定要退出当前账号吗？").assertIsDisplayed()
+        compose.runOnIdle { showProfile = false }
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.runOnIdle { showProfile = true }
+        compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, logoutCalls) }
+    }
+
+    private fun signedInState() = AuthState(
+        status = AuthStatus.AUTHENTICATED,
+        profile = UserProfile("synthetic-student", "测试用户"),
+    )
 
     @Test fun passwordVisibilityUsesAccessibleIconsAndSubmissionIsNotDuplicated() {
         var submissions = 0

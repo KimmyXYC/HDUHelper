@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,12 +38,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import moe.nepnep.hduhelper.ui.navigation.AppDestination
+import moe.nepnep.hduhelper.ui.components.AppTopBarIconButton
 import moe.nepnep.hduhelper.ui.screens.AboutScreen
 import moe.nepnep.hduhelper.ui.screens.AppearanceScreen
 import moe.nepnep.hduhelper.ui.screens.ApplicationsScreen
 import moe.nepnep.hduhelper.ui.screens.CampusCodeScreen
 import moe.nepnep.hduhelper.ui.screens.LoginScreen
 import moe.nepnep.hduhelper.ui.screens.ProfileScreen
+import moe.nepnep.hduhelper.ui.screens.ScheduleEditorScreen
+import moe.nepnep.hduhelper.ui.screens.ScheduleTopBar
+import moe.nepnep.hduhelper.ui.screens.ScheduleRepeatScreen
+import moe.nepnep.hduhelper.ui.screens.ScheduleReminderScreen
 import moe.nepnep.hduhelper.ui.screens.ScheduleScreen
 import moe.nepnep.hduhelper.ui.screens.TimetableScreen
 import moe.nepnep.hduhelper.ui.screens.TimetableTopBar
@@ -48,16 +56,24 @@ import moe.nepnep.hduhelper.ui.screens.TimetableSettingsScreen
 import moe.nepnep.hduhelper.ui.screens.VerificationCookies
 import moe.nepnep.hduhelper.ui.screens.VerificationScreen
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 
 @Composable
-fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetableModel: TimetableViewModel, modifier: Modifier = Modifier) {
+fun HDUHelperApp(
+    model: AppViewModel,
+    campusModel: CampusCodeViewModel,
+    timetableModel: TimetableViewModel,
+    scheduleModel: ScheduleViewModel,
+    modifier: Modifier = Modifier,
+    scheduleLink: android.net.Uri? = null,
+    onScheduleLinkConsumed: () -> Unit = {},
+) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "main"
@@ -68,6 +84,8 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
     val actionError by model.actionError.collectAsStateWithLifecycle()
     val campusState by campusModel.state.collectAsStateWithLifecycle()
     val timetableState by timetableModel.state.collectAsStateWithLifecycle()
+    val scheduleState by scheduleModel.state.collectAsStateWithLifecycle()
+    val scheduleEditor by scheduleModel.editor.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -78,6 +96,7 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
 
     LifecycleStartEffect(Unit) {
         model.onForeground()
+        scheduleModel.foreground()
         onStopOrDispose { model.onBackground() }
     }
     LifecycleStartEffect(route, destination) {
@@ -87,6 +106,26 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
     LifecycleStartEffect(route, destination) {
         timetableModel.setVisible(route == "main" && destination == AppDestination.TIMETABLE)
         onStopOrDispose { timetableModel.setVisible(false) }
+    }
+    LifecycleStartEffect(route, destination) {
+        scheduleModel.setVisible(route == "main" && destination == AppDestination.SCHEDULE)
+        onStopOrDispose { scheduleModel.setVisible(false) }
+    }
+    LaunchedEffect(scheduleLink) {
+        scheduleLink?.let { link ->
+            val parts = link.pathSegments
+            if (link.scheme == "hduhelper" && link.host == "schedule" && parts.size == 3) {
+                val original = runCatching { java.time.LocalDate.parse(parts[1]) }.getOrNull()
+                val date = runCatching { java.time.LocalDate.parse(parts[2]) }.getOrNull()
+                if (original != null && date != null) {
+                    destination = AppDestination.SCHEDULE
+                    if (sensitive) model.cancelLogin()
+                    nav.popBackStack("main", false)
+                    scheduleModel.openNotification(parts[0], original, date)
+                }
+            }
+            onScheduleLinkConsumed()
+        }
     }
     moe.nepnep.hduhelper.ui.components.CampusCodeBrightness(route == "main" && destination == AppDestination.CAMPUS_CODE)
     DisposableEffect(sensitive, activity) {
@@ -121,7 +160,7 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
     BackHandler(route == "main" && destination != AppDestination.SCHEDULE) { destination = AppDestination.SCHEDULE }
 
     NavHost(
-        navController = nav, startDestination = "main", modifier = modifier.fillMaxSize(),
+        navController = nav, startDestination = "main", modifier = modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface),
         enterTransition = { slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it } },
         exitTransition = { slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) { -it / 3 } },
         popEnterTransition = { slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { -it / 3 } },
@@ -131,6 +170,9 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
             Scaffold(
                 topBar = {
                     if (destination == AppDestination.TIMETABLE) TimetableTopBar(timetableState, timetableModel::goToDefaultWeek, timetableModel::selectTerm)
+                    else if (destination == AppDestination.SCHEDULE) ScheduleTopBar {
+                        scheduleModel.add(); nav.navigate("schedule_edit") { launchSingleTop = true }
+                    }
                     else TopAppBar(title = stringResource(destination.labelRes))
                 },
                 bottomBar = {
@@ -157,7 +199,11 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
                 ) { page ->
                     pageStateHolder.SaveableStateProvider(page.name) {
                         when (page) {
-                            AppDestination.SCHEDULE -> ScheduleScreen(Modifier.fillMaxSize())
+                            AppDestination.SCHEDULE -> ScheduleScreen(scheduleState, scheduleModel::selectDate, scheduleModel::today,
+                                onDetail = scheduleModel::showDetail,
+                                onEdit = { occurrence, onlyThis -> scheduleModel.edit(occurrence, onlyThis); nav.navigate("schedule_edit") { launchSingleTop = true } },
+                                onDelete = scheduleModel::delete, onRefresh = scheduleModel::refreshCourses, onRetryStorage = scheduleModel::retryStorage,
+                                modifier = Modifier.fillMaxSize())
                             AppDestination.TIMETABLE -> TimetableScreen(timetableState, timetableModel::refresh, timetableModel::selectWeek,
                                 onLogin = { loginReturnDestination = AppDestination.TIMETABLE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onVerify = { loginReturnDestination = AppDestination.TIMETABLE; model.openVerification() }, modifier = Modifier.fillMaxSize())
@@ -179,6 +225,36 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetabl
                     }
                 }
             }
+        }
+        composable("schedule_edit") { editorEntry ->
+            // Clearing the draft must not remove the outgoing page before its slide finishes.
+            // This snapshot belongs only to this entry and is released with the page.
+            var lastEditorState by remember(editorEntry) { mutableStateOf(scheduleEditor) }
+            SideEffect { scheduleEditor?.let { lastEditorState = it } }
+            val editorState = scheduleEditor ?: lastEditorState
+            if (scheduleEditor == null) LaunchedEffect(Unit) {
+                // Navigation retains the outgoing editor during its exit animation.
+                // A completed save has already popped it; never pop the main page again.
+                if (nav.currentDestination?.route == "schedule_edit") nav.popBackStack()
+            }
+            if (editorState != null) ScheduleEditorScreen(editorState, scheduleModel::updateDraft,
+                onSave = { reset -> scheduleModel.save(reset) { nav.popBackStack() } },
+                needsExceptionReset = scheduleModel::needsExceptionReset,
+                onBack = { scheduleModel.discardEditor(); nav.popBackStack() },
+                reminderStatus = scheduleState.reminderStatus, onPermissionsChanged = scheduleModel::foreground,
+                onChooseRepeat = { nav.navigate("schedule_repeat") { launchSingleTop = true } },
+                onChooseReminder = { nav.navigate("schedule_reminder") { launchSingleTop = true } }, active = route == "schedule_edit")
+        }
+        for (choice in listOf("schedule_repeat", "schedule_reminder")) composable(choice) {
+            val editorState = scheduleEditor
+            if (editorState == null) LaunchedEffect(Unit) {
+                if (nav.currentDestination?.route == choice) nav.popBackStack("main", false)
+            } else if (choice == "schedule_repeat") ScheduleRepeatScreen(editorState.draft.repeat, { selected ->
+                scheduleModel.updateDraft(editorState.draft.copy(repeat = selected)); nav.popBackStack()
+            }, { nav.popBackStack() })
+            else ScheduleReminderScreen(editorState.draft.reminderMinutes, { selected ->
+                scheduleModel.updateDraft(editorState.draft.copy(reminderMinutes = selected)); nav.popBackStack()
+            }, { nav.popBackStack() })
         }
         composable("login") {
             SecondaryPage("账号登录", back) { pageModifier ->
@@ -213,7 +289,7 @@ private fun SecondaryPage(title: String, onBack: () -> Unit, resizeForIme: Boole
         modifier = if (resizeForIme) Modifier.imePadding() else Modifier,
         topBar = {
             TopAppBar(title, navigationIcon = {
-                IconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回") }
+                AppTopBarIconButton(onClick = onBack) { Icon(MiuixIcons.Back, contentDescription = "返回", modifier = it) }
             })
         },
     ) { padding -> content(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) }

@@ -29,6 +29,20 @@ adb shell am instrument -w -e class moe.nepnep.hduhelper.ProfileUiTest \
   moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
+### 日程回归
+
+`ScheduleUiTest` 用模拟状态验证左右翻日、回到今天按钮、紧凑表单、独立重复/提醒页面及统一时间面板；`AppPullToRefreshTest` 验证日程与课表共用的下拉阻尼和仅在顶部刷新；`ScheduleNavigationTest` 验证真实页面导航和加密存储的增删改。后者只创建带唯一标识的测试日程，并在结束后删除这些记录，不清除账号或其他日程。
+
+```sh
+adb shell am instrument -w \
+  -e class moe.nepnep.hduhelper.ScheduleUiTest,moe.nepnep.hduhelper.ScheduleNavigationTest \
+  moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+`ScheduleReminderDeviceTest` 默认跳过。实体机上先在系统设置中允许通知与精确闹钟，再以 `-e scheduleReminders true` 单独运行该类。测试等待真实闹钟触发，验证通知去重、恢复调度，以及通知的冷启动和热启动详情跳转；测试不自行授予权限，并清理测试日程与通知。若手机限制测试 Activity 从后台启动，需要允许本应用的后台弹出界面，测试后恢复原设置。手机已安装正式签名包时，应用与测试 APK 都必须用相同密钥签署后覆盖安装，不能通过卸载清数据解决签名冲突。
+
+自定义日程按北京时间计算，与校园账号无关，使用独立 Keystore 密钥保存在 `noBackupFilesDir/schedule`。全天日程内部使用不包含结束日的区间，表单显示包含结束日；每月和每年重复遇到不存在的日期时跳过。重复系列保存原始规则和单次例外，整个系列改变开始日期或重复规则时需要确认清除例外。提醒只安排下一次，通知权限关闭时不发送，缺少精确闹钟权限时使用可能延迟的普通闹钟。强行停止应用后需重新打开应用恢复调度；系统/厂商后台限制仍可能影响提醒。
+
 真实学校服务测试默认跳过，必须手动选择并先安装 Debug 和测试 APK：
 
 ```sh

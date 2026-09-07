@@ -20,9 +20,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -42,6 +39,8 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.nepnep.hduhelper.data.timetable.*
+import moe.nepnep.hduhelper.ui.components.AppPullToRefresh
+import moe.nepnep.hduhelper.ui.components.AppTopBarIconButton
 import moe.nepnep.hduhelper.R
 import moe.nepnep.hduhelper.ui.TimetableStatus
 import moe.nepnep.hduhelper.ui.TimetableUiState
@@ -65,8 +64,8 @@ fun TimetableTopBar(state: TimetableUiState, onDefault: () -> Unit, onTerm: (Aca
             Text(title, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             if (subtitle.isNotBlank()) Text(subtitle, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        IconButton(onClick = { chooseTerm = true }, enabled = state.catalog != null, modifier = Modifier.size(48.dp).testTag("timetable_choose_term")) {
-            Icon(painterResource(R.drawable.ic_swap_horizontal), "切换学期", Modifier.size(24.dp))
+        AppTopBarIconButton(onClick = { chooseTerm = true }, enabled = state.catalog != null, modifier = Modifier.testTag("timetable_choose_term")) {
+            Icon(painterResource(R.drawable.ic_swap_horizontal), "切换学期", it)
         }
     }
     state.catalog?.let { catalog ->
@@ -130,14 +129,6 @@ fun TimetableScreen(
         } else {
             val weeks = remember(data.weeks, state.today) { TimetableRules.availableWeeks(data.weeks, state.today) }
             if (weeks.isNotEmpty()) {
-                // Miuix does not expose its refresh threshold. Add resistance only to
-                // downward overscroll so refreshing requires twice the finger travel.
-                val refreshResistance = remember {
-                    object : NestedScrollConnection {
-                        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                            if (source == NestedScrollSource.UserInput && available.y > 0f) Offset(0f, available.y * 0.5f) else Offset.Zero
-                    }
-                }
                 val pager = rememberPagerState(initialPage = weeks.indexOf(state.week).coerceAtLeast(0), pageCount = { weeks.size })
                 LaunchedEffect(state.week, weeks) {
                     val target = weeks.indexOf(state.week)
@@ -146,8 +137,8 @@ fun TimetableScreen(
                 LaunchedEffect(pager, weeks) {
                     snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { weeks.getOrNull(it)?.let(onWeek) }
                 }
-                PullToRefresh(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
-                    HorizontalPager(pager, Modifier.fillMaxSize().nestedScroll(refreshResistance).testTag("timetable_pager"), key = { weeks[it] }) { index ->
+                AppPullToRefresh(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
+                    HorizontalPager(pager, Modifier.fillMaxSize().testTag("timetable_pager"), key = { weeks[it] }) { index ->
                         val week = weeks[index]
                         Column(Modifier.fillMaxSize()) {
                             DateHeader(data, week, state.today, state.settings.showWeekend)
@@ -300,7 +291,7 @@ private fun CourseCard(card: MeetingCard, dark: Boolean, settings: TimetableSett
 }
 
 @Composable
-private fun CourseDetails(meeting: CourseMeeting?, clocks: List<CampusClock>, total: Int, index: Int, onDismiss: () -> Unit, onNext: () -> Unit) {
+fun CourseDetails(meeting: CourseMeeting?, clocks: List<CampusClock>, total: Int, index: Int, onDismiss: () -> Unit, onNext: () -> Unit) {
     WindowDialog(show = meeting != null, title = meeting?.name, onDismissRequest = onDismiss, modifier = Modifier.testTag("course_details")) {
         meeting?.let { m ->
             Column(Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -9,8 +9,6 @@
     <string name="nav_campus_code">一码通</string>
     <string name="nav_applications">应用</string>
     <string name="nav_profile">我的</string>
-    <string name="schedule_title">安排校园每一天</string>
-    <string name="schedule_description">在这里查看日程与待办，让学习生活井井有条。</string>
     <string name="applications_title">校园服务，触手可及</string>
     <string name="applications_description">在这里发现常用校园应用，汇集学习与生活服务。</string>
     <string name="coming_soon">敬请期待</string>

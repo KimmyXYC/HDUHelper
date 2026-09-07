@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Align, sign and verify an existing release APK; all password inputs are files."""
+"""Align, sign and verify release or CI APKs; all password inputs are files."""
 import argparse
 import importlib.util
 import os
@@ -24,10 +24,19 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--signing-dir", required=True, type=Path)
     parser.add_argument("--build-tools", required=True, type=Path)
-    parser.add_argument("--tag", required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--tag")
+    mode.add_argument("--ci-version")
     args = parser.parse_args()
     version, code = version_module.project_version()
-    version_module.validate_tag(args.tag, version)
+    if args.ci_version:
+        sha = run("git", "-C", version_module.ROOT, "rev-parse", "HEAD", capture=True).strip()[:7]
+        expected = f"v{version}.{sha}"
+        if args.ci_version != expected:
+            parser.error(f"CI version must match the checked-out source: {expected}")
+        version = expected
+    else:
+        version_module.validate_tag(args.tag, version)
     keystore = args.signing_dir / "release.p12"
     password = args.signing_dir / "release.password"
     for path in (args.apk, keystore, password):
@@ -39,8 +48,9 @@ def main():
     package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
     if not package or package.groups() != ("moe.nepnep.hduhelper", str(code), version):
         parser.error("APK package/version does not match the release configuration")
-    if "application-debuggable" in badging:
-        parser.error("Refusing to release a debuggable APK")
+    debuggable = "application-debuggable" in badging
+    if debuggable != bool(args.ci_version):
+        parser.error("CI APK must be debuggable; release APK must not be debuggable")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="hduhelper-sign-", dir=args.output.parent) as temporary:
         aligned = Path(temporary) / "aligned.apk"
@@ -52,7 +62,7 @@ def main():
         run(args.build_tools / "zipalign", "-c", "-P", "16", "4", signed)
         run(args.build_tools / "apksigner", "verify", "--verbose", "--print-certs", signed)
         os.rename(signed, args.output)
-    print(f"Signed release: {args.output}")
+    print(f"Signed APK: {args.output}")
 
 
 if __name__ == "__main__":

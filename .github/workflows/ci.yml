@@ -16,6 +16,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -38,13 +40,12 @@ jobs:
         run: |
           python3 tools/test-build-version.py
           ./gradlew --no-daemon -PciVersionName="$CI_VERSION" :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/HDUHelper-$CI_VERSION.apk"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: HDUHelper-${{ steps.version.outputs.name }}
-          path: dist/*.apk
+          name: unsigned-ci
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -53,3 +54,57 @@ jobs:
             app/build/reports/
             app/build/test-results/
           retention-days: 14
+
+  sign:
+    needs: build
+    # Fork PRs cannot access the publishing key and do not produce a signed APK.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install signing tools
+        run: sdkmanager 'build-tools;36.0.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-ci
+          path: unsigned
+      - name: Restore signing files
+        run: |
+          set +x
+          umask 077
+          mkdir -p "$RUNNER_TEMP/hduhelper-signing"
+          cat > "$RUNNER_TEMP/hduhelper-signing/keystore.base64" <<'KEYSTORE_EOF'
+          ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_EOF
+          cat > "$RUNNER_TEMP/hduhelper-signing/release.password" <<'PASSWORD_EOF'
+          ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PASSWORD_EOF
+          test "$(wc -c < "$RUNNER_TEMP/hduhelper-signing/release.password")" -gt 1
+          base64 --decode "$RUNNER_TEMP/hduhelper-signing/keystore.base64" > "$RUNNER_TEMP/hduhelper-signing/release.p12"
+          test -s "$RUNNER_TEMP/hduhelper-signing/release.p12"
+          rm "$RUNNER_TEMP/hduhelper-signing/keystore.base64"
+      - name: Sign and verify CI APK
+        env:
+          CI_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python3 tools/sign-release.py --apk unsigned/app-debug-unsigned.apk \
+            --output "dist/HDUHelper-$CI_VERSION.apk" --ci-version "$CI_VERSION" \
+            --signing-dir "$RUNNER_TEMP/hduhelper-signing" \
+            --build-tools "$ANDROID_HOME/build-tools/36.0.0"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: HDUHelper-${{ needs.build.outputs.version }}
+          path: dist/*.apk
+          if-no-files-found: error
+      - name: Remove signing files
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/hduhelper-signing"

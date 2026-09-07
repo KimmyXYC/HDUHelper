@@ -15,9 +15,9 @@
 
 前往 [最新正式版](https://github.com/KimmyXYC/HDUHelper/releases/latest)，下载附件中的 `HDUHelper-v版本号.apk`，在手机上打开并按系统提示允许安装。`SHA256SUMS` 可用于校验下载文件。
 
-正式版使用固定签名，后续版本可覆盖安装。CI 测试包位于 [GitHub Actions](https://github.com/KimmyXYC/HDUHelper/actions/workflows/ci.yml)，版本名形如 `v1.0.0.abcdefg`，末尾为源码提交 ID。
+正式版与 CI 测试包使用同一固定签名；versionCode 相同或更高时可以覆盖安装并保留本地数据。CI 测试包位于 [GitHub Actions](https://github.com/KimmyXYC/HDUHelper/actions/workflows/ci.yml)，版本名形如 `v1.0.0.abcdefg`，末尾为源码提交 ID。
 
-**Debug 测试包与正式版签名不同，不能直接覆盖安装。** 如已安装 Debug 包，需要先卸载再安装正式版；卸载会清除本地登录资料、设置与课表缓存。CI 包用于测试，不保证不同构建之间可覆盖安装。
+**此前安装的本机 Debug 包使用开发签名，不能直接覆盖安装正式版或 CI 包。** 需要先卸载；卸载会清除本地登录资料、设置与课表缓存。来自 Fork 的 PR 只进行构建检查，不提供签名测试包。
 
 ## 使用方法
 

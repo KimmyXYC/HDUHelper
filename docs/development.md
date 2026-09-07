@@ -20,6 +20,8 @@ JVM 测试使用 JUnit 4、MockWebServer 和协程测试工具，覆盖认证、
 python3 tools/test-build-version.py
 ```
 
+`RuntimeCompatibilityTest` 使用独立临时目录和 Keystore 密钥，离线检查加密存储、序列化及一码通算法，不接触原有账号。
+
 可通过 instrumentation 参数选择 `ProfileUiTest`、`CampusCodeUiTest`、`TimetableUiTest` 或 `TimetableNavigationTest`：
 
 ```sh
@@ -45,6 +47,17 @@ adb shell am instrument -w -e class moe.nepnep.hduhelper.OfficialWebViewTest \
   moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
+### 优化包离线设备回归
+
+在独立模拟器上运行以下构建，生成优化后的应用与测试 APK：
+
+```sh
+./gradlew --no-configuration-cache -I tools/release-test.init.gradle \
+  :app:assembleRelease :app:assembleReleaseAndroidTest
+```
+
+按下文签名应用 APK，再用同一个密钥通过 `apksigner sign --ks ... --ks-pass file:...` 签名 `app/build/outputs/apk/androidTest/release/` 下的测试 APK。安装两者后，使用 instrumentation 参数选择 `moe.nepnep.hduhelper.RuntimeCompatibilityTest`。这两个离线测试覆盖实际 Android Keystore 和压缩后的存储/密码算法路径。测试专用规则只忽略 Error Prone 注解中 Android 不提供的 JDK 编译器枚举，不改变生产保留规则。
+
 ## 版本与 CI
 
 `app/build.gradle.kts` 的 `defaultConfig` 是正式版本的唯一来源。每次正式发布更新 `versionName` 并递增 `versionCode`，然后提交。
@@ -55,7 +68,7 @@ CI 在分支推送和 PR 时构建 Debug，PR 检出源提交。`tools/build-ver
 ./gradlew -PciVersionName="$(python3 tools/build-version.py ci)" :app:assembleDebug
 ```
 
-本机未提供此属性时使用基础版本。CI 执行 JVM 测试、Lint、Debug 和测试 APK 构建，上传测试包与报告。CI 不访问签名 Secrets，也不测试真实账号。
+提供此属性时 Debug 产物为未签名 APK，交由独立任务签名；本机未提供时使用基础版本与本机 Debug 签名。CI 执行 JVM 测试、Lint、Debug 和测试 APK 构建，上传测试包与报告。CI 构建任务不访问签名 Secrets；独立签名任务使用与正式版相同的密钥。Fork PR 只构建检查、不生成签名包。CI 不测试真实账号。
 
 ## Release 优化与签名
 
@@ -72,7 +85,7 @@ python3 tools/sign-release.py \
   --build-tools "$ANDROID_HOME/build-tools/36.0.0" --tag v1.0.0
 ```
 
-脚本检查包名、版本和不可调试标志，再执行 zipalign、apksigner 签名及验证；密码仅通过文件读取，已存在的输出不会覆盖。签名后不要重新压缩或修改 APK。R8 mapping 位于 `app/build/outputs/mapping/release/`，发布流程保存为 90 天的诊断附件；需要长期排查时及时下载归档。
+脚本检查包名、版本和构建类型；正式版不可调试，CI 使用 `--ci-version` 核对版本与实际 HEAD 且必须可调试。随后执行 zipalign、apksigner 签名及验证；密码仅通过文件读取，已存在的输出不会覆盖。签名后不要重新压缩或修改 APK。R8 mapping 位于 `app/build/outputs/mapping/release/`，发布流程保存为 90 天的诊断附件；需要长期排查时及时下载归档。
 
 ## 发布流程
 

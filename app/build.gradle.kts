@@ -21,6 +21,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (providers.gradleProperty("ciVersionName").isPresent) {
+                // CI signs in a separate job; never use a per-run debug certificate.
+                signingConfig = null
+            }
+        }
         release {
             optimization {
                 enable = true

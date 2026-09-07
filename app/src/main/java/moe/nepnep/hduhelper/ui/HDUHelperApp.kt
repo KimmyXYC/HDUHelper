@@ -90,6 +90,7 @@ fun HDUHelperApp(
     val notificationModel: NotificationSettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = NotificationSettingsViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
     val notificationStatus by notificationModel.status.collectAsStateWithLifecycle()
+    val backgroundStatus by notificationModel.background.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
@@ -283,7 +284,8 @@ fun HDUHelperApp(
         composable("notification_settings") {
             SecondaryPage("通知设置", back) { pageModifier ->
                 moe.nepnep.hduhelper.ui.screens.NotificationSettingsPage(settings.notifications, notificationStatus,
-                    notificationModel::update, notificationModel::foreground, notificationModel::claimPermissionPrompt, pageModifier)
+                    notificationModel::update, notificationModel::foreground, notificationModel::claimPermissionPrompt, pageModifier, notificationModel::testNotification,
+                    backgroundStatus, settings.backgroundEnhancement, notificationModel::updateBackground)
             }
         }
         composable("appearance") {

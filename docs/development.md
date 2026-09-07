@@ -47,11 +47,31 @@ adb shell am instrument -w \
 
 ### 课程通知回归
 
-“我的 → 通知设置”默认仅开启上课提醒（提前 10 分钟），下课提醒默认提前 1 分钟但关闭，实时通知默认关闭。两种提前量均通过输入框填写 0–30 的整数分钟，0 表示准点提醒。连续节次按一整段处理，使用课程所属校区的作息时间；提醒只读取当前账号、当前学期的缓存，离线无需登录，浏览其他学期和课表显示过滤不改变提醒。
+通知设置分别检测自启动、Android 电池优化豁免和小米省电策略，返回设置页时刷新。“电池优化”弹窗提供两个系统入口。小米自启动只读查询 AppOps 10008；省电策略只读查询 PowerKeeper `userTable` 的本包、本用户 `bgControl`，不调用可能修改设置的 `getPowerSaveAppConfigure`。权限不足、缺少记录或未知值显示“无法检测”；支持的系统框架桥接可提供特权只读查询，结果仍为系统真实设置。
 
-普通模式在配置时间提醒一次。实时模式仅为已开启的提醒显示倒计时，到点转为正计时并在 60 秒后移除；关闭本次提醒会保留取消记录，切换开关不会恢复同一次提醒。Android 16+ 请求标准 Live Updates，不支持或未获系统许可时使用普通持续计时通知。秒数由系统 Chronometer 绘制；有界 `specialUse` 前台服务仅在提醒窗口内管理状态切换，结束后释放唤醒锁并停止。闹钟、开机解锁、时钟变化、缓存刷新及账号变化会重新核对任务，持久化记录只包含散列标识和截止时间，位于不参与备份的目录。强行停止、未授予精确提醒权限以及系统/厂商后台限制仍可能造成延迟；实时通知呈现在哪些系统区域由手机决定。
+“Xposed 后台提醒增强”默认关闭，独立于超级岛。启用需要增加 LSPosed 的 `system` 系统框架作用域并重启设备；现代 API 的 `android` 是普通系统包，不能替代 `system`。API 101 的服务连接由两项功能共用，开关经远程偏好存储同步；系统端仅适配 HyperOS `AlarmManagerServiceStubImpl` 的投递、对齐和 SSRU 限制，检查 PendingIntent 创建包名、UID、目标包和课程/日程 action 后才豁免。所有必需签名匹配且真实通道确认后才报告就绪。关闭后恢复原始判断，不修改全局省电设置，不提供强行停止后的自动拉起，也不持有常驻保活服务。
 
-`CourseReminderRulesTest`、`CourseReminderJournalTest` 和 `ScheduleViewModelTest` 覆盖计时边界、教学周、校区、去重、取消、设置及账号变化、冷启动闹钟时序和课程详情跳转。`NotificationSettingsUiTest` 验证深浅色设置界面和独立偏好存储，`CourseNotificationTest` 验证真实 Android 通知模板的倒计时/正计时、自动清理时限与提升条件，不实际发送通知或修改课表。`TimetableNavigationTest` 还验证通知设置入口和返回导航，该用例在通知权限未授权时跳过以避免无人值守操作系统权限弹窗。
+`BackgroundStatusTest` 覆盖权限映射与提醒身份匹配；`BackgroundDeviceTest` 默认执行只读状态和伪造通道拒绝测试。添加 `-e backgroundEnabled true` 才验证真实 Hook、远程开关、课程/日程闹钟实际命中与无关 action 不受影响；测试使用无效事件令牌，撤销所有测试闹钟并恢复开关。锁屏与系统回收后的真实通知仍需课程、日程回归测试验证。
+
+系统框架模块调试必须使用 `adb install --no-incremental -r APK` 完整安装：真机增量安装的 APK 在早期开机阶段曾被 LSPosed 读取时报 `I/O error`，导致系统框架注入被跳过，而解锁后应用及系统界面模块仍能正常工作。应用 APK 更新后重启设备；仅更新测试 APK 无需重启。
+
+应用会核对系统框架中已加载模块的 APK 路径；覆盖安装后即使旧模块仍响应，也必须显示需要重启。升级前后可分别用 `BackgroundDeviceTest.updatedApkRequiresSystemServerRestart`（参数 `-e backgroundUpdated true`）和 `loadedHostReportsRealPermissionsAndSwitchControlsReminderAlarmExemptions`（参数 `-e backgroundEnabled true`）验证更新提示、配置回执和真实闹钟行为。后者通过状态流等待配置生效，不轮询刷新，并恢复原有开关。
+
+`BackgroundAlarmLifecycleDeviceTest` 用 `-e backgroundLifecycle true -e enhanced false`（或 `true`）运行 `prepareColdLockedReminders`，准备 50 秒后的普通课程/日程提醒并锁屏；结束 instrumentation 后用 `adb shell am kill moe.nepnep.hduhelper` 回收后台进程，等到目标时间后 15 秒，再运行 `verifyPreviouslyDeliveredColdRemindersAndRestore`。它要求通知早于验证启动且在目标时间 10 秒内发布，避免冷启动补发造成假通过。中断时以 `-e backgroundRecovery true` 运行 `restoreInterruptedColdReminderProbe`，按唯一标识清理测试数据并恢复设置。不要用强行停止替代进程回收。
+
+`CampusCodeRecoveryTest` 覆盖网络/认证恢复顺序、有限重试、合并和取消。`CampusCodeNetworkDeviceTest` 仅在 `-e campusNetwork true` 时运行：复用已有登录状态，停留一码通页面关闭再恢复网络，检查二维码自行恢复；Wi-Fi 和移动数据恢复为测试前状态。真实二维码仅在受保护窗口及内存中使用，不截图、不输出认证信息。
+
+“我的 → 通知设置”默认仅开启上课提醒（提前 10 分钟），下课提醒默认提前 1 分钟但关闭，默认使用普通通知。两种提前量均通过输入框填写 0–30 的整数分钟，0 表示准点提醒。连续节次按一整段处理，使用课程所属校区的作息时间；提醒只读取当前账号、当前学期的缓存，离线无需登录，浏览其他学期和课表显示过滤不改变提醒。
+
+普通模式在配置时间提醒一次。安装包内置现代 Xposed API 101 模块：在 LSPosed 启用杭电助手，勾选 `com.android.systemui`、`miui.systemui.plugin` 并重启作用域，再返回“通知设置”。仅 HyperOS 3 及以上、模块激活且作用域授权时显示“开启课程表超级岛”，默认关闭；授权后 Hook 尚未加载时显示禁用提示。开关打开且能力检查通过时，用小米原生模板 9 替代普通提醒；否则回退普通通知，不重复响铃。已移除 Android 标准 Live Updates 及其权限，旧开关不会自动迁移为开启超级岛。
+
+超级岛仅覆盖已开启的上课/下课提醒窗口：课前或下课前倒计时，到目标时刻转为正计时，60 秒后移除。展开态显示课程名、起止时间、教室和操作按钮；胶囊显示教室及目标时间。窗口内的有界 `specialUse` 前台服务协助边界切换，退出后释放唤醒锁。取消记录及提醒去重仍使用不参与备份的散列事件日志。普通通知的精确闹钟、后台运行与通知权限要求保持不变。
+
+“上课静音”只改变铃声/通知模式，不改变媒体、闹钟或主动开启勿扰。SystemUI 内的模块保存原声音模式及不含课程内容的到期记录，实际下课时恢复；超级岛消失或杭电助手进程退出不移除恢复任务，不另发静音控制通知。用户通过系统改变声音模式会取消模块接管；原本静音不接管。重叠课程按各自结束时间合并恢复任务。调用方校验限制了跨进程注册和声音操作，权限 Hook 仅放行杭电助手包名。参考项目未提供根目录许可证，未直接搬运其实现，模板按小米公开协议独立构建。
+
+“测试通知”不依赖登录或课表：超级岛关闭或不可用时发送普通通知；可用并开启时模拟 60 秒后上课、课程持续 60 秒。重复测试替换旧测试通知，不写入课表。`NotificationPreviewDeviceTest` 使用 `-e notificationPreview true` 验证完整显示周期；`IslandDeviceTest` 的 `-e islandEnabled true` 验证真实模块通道，`-e islandMute true` 临时改变铃声模式并验证自动恢复，原本静音时跳过声音修改。
+
+`CourseReminderRulesTest`、`CourseReminderJournalTest` 和 `ScheduleViewModelTest` 覆盖计时边界、教学周、校区、去重、取消、设置及账号变化、冷启动闹钟时序和课程详情跳转。`NotificationSettingsUiTest` 验证深浅色设置界面和独立偏好存储，`CourseNotificationTest` 验证真实 Android 通知模板的倒计时/正计时、自动清理时限、小米模板数据以及不再请求标准实时通知，不实际发送通知或修改课表。`TimetableNavigationTest` 还验证通知设置入口和返回导航，该用例在通知权限未授权时跳过以避免无人值守操作系统权限弹窗。
 
 ```sh
 adb shell am instrument -w \
@@ -59,7 +79,7 @@ adb shell am instrument -w \
   moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-`CourseReminderDeviceTest` 通过 `-e courseReminders true` 单独启用，要求通知和精确闹钟权限已开启、当前账号已有当前学期缓存，且测试窗口内没有真实课程提醒。它在缓存中加入带唯一标识的短时测试课程，等待真实闹钟、倒计时/正计时切换及 60 秒清理，验证关闭本次提醒，并用已有课程检查冷/热启动详情跳转；结束时只移除测试课程、校区和临时周次，恢复原通知设置。运行期间不要刷新课表或切换账号，避免替换测试缓存。测试不自行授予权限。测试变更前会保存恢复记录；若进程被中断导致清理未完成，可解锁手机后以 `-e courseReminderRecovery true` 运行同类的 `restoreAnInterruptedDeviceTest` 方法恢复，恢复过程只删除记录中的测试对象。可在计时阶段熄屏验证锁屏后台行为，再分别检查系统允许与关闭实时通知时的显示；模板和规则测试不能替代这些真机验证。
+`CourseReminderDeviceTest` 通过 `-e courseReminders true` 单独启用，要求模块已就绪、通知和精确闹钟权限已开启、当前账号已有当前学期缓存，且测试窗口内没有真实课程提醒。它在缓存中加入带唯一标识的短时测试课程，等待真实闹钟、倒计时/正计时切换及 60 秒清理，验证关闭本次提醒以及与测试通知并存时互不影响，并用已有课程检查冷/热启动详情跳转；结束时只移除测试课程、校区和临时周次，恢复原通知设置。运行期间不要刷新课表或切换账号，避免替换测试缓存。测试不自行授予权限。测试变更前会保存恢复记录；若进程被中断导致清理未完成，可解锁手机后以 `-e courseReminderRecovery true` 运行同类的 `restoreAnInterruptedDeviceTest` 方法恢复，恢复过程只删除记录中的测试对象。可在计时阶段熄屏验证锁屏后台行为，再分别检查超级岛开启与关闭时的显示；模板和规则测试不能替代这些真机验证。
 
 真实学校服务测试默认跳过，必须手动选择并先安装 Debug 和测试 APK：
 

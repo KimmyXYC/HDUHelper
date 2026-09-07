@@ -3,8 +3,9 @@ package moe.nepnep.hduhelper.ui.screens
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
+import kotlinx.coroutines.launch
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -26,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import moe.nepnep.hduhelper.data.notifications.*
+import moe.nepnep.hduhelper.data.background.*
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.Card
@@ -39,12 +41,18 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 @Composable
 fun NotificationSettingsPage(settings: NotificationSettings, status: CourseNotificationStatus,
     onChange: (NotificationSettings) -> Unit, onRefresh: () -> Unit, claimPrompt: () -> Boolean, modifier: Modifier = Modifier,
+    onTest: suspend () -> Boolean,
+    background: BackgroundStatus = BackgroundStatus(), backgroundEnhancement: Boolean = false,
+    onBackgroundEnhancement: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var testing by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onRefresh() }
     fun open(intent: Intent) {
         try { context.startActivity(intent) }
         catch (_: android.content.ActivityNotFoundException) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())) }
+        catch (_: SecurityException) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())) }
     }
     fun requestNotifications() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -67,23 +75,39 @@ fun NotificationSettingsPage(settings: NotificationSettings, status: CourseNotif
         open(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             .putExtra(Settings.EXTRA_CHANNEL_ID, AndroidCourseReminders.CHANNEL))
     }, onExact = { open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, "package:${context.packageName}".toUri())) },
-        onPromoted = {
-            if (Build.VERSION.SDK_INT >= 36) open(Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-        }, modifier = modifier,
-        onBackground = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())) })
+        modifier = modifier,
+        background = background, backgroundEnhancement = backgroundEnhancement, onBackgroundEnhancement = onBackgroundEnhancement,
+        onAutostart = { open(Intent("miui.intent.action.OP_AUTO_START").setPackage("com.miui.securitycenter")) },
+        onBattery = { open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) },
+        onVendorBattery = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())) },
+        testEnabled = !testing, onTest = {
+            if (!status.notifications) requestNotifications()
+            else if (!testing) scope.launch {
+                testing = true
+                try {
+                    if (!onTest()) Toast.makeText(context, "测试通知发送失败，请检查通知权限后重试", Toast.LENGTH_SHORT).show()
+                } finally { testing = false }
+            }
+        })
 }
 
 @Composable
 fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNotificationStatus,
-    onChange: (NotificationSettings) -> Unit, onNotifications: () -> Unit, onExact: () -> Unit, onPromoted: () -> Unit,
+    onChange: (NotificationSettings) -> Unit, onNotifications: () -> Unit, onExact: () -> Unit,
     modifier: Modifier = Modifier,
-    onBackground: () -> Unit = {},
+    background: BackgroundStatus = BackgroundStatus(), backgroundEnhancement: Boolean = false,
+    onBackgroundEnhancement: (Boolean) -> Unit = {},
+    onAutostart: () -> Unit = {}, onBattery: () -> Unit = {}, onVendorBattery: () -> Unit = {},
+    onTest: () -> Unit = {},
+    testEnabled: Boolean = true,
 ) {
     var choosing by rememberSaveable { mutableStateOf<String?>(null) }
+    var batteryDialog by rememberSaveable { mutableStateOf(false) }
     var minutesInput by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val minutes = minutesInput.toIntOrNull()?.takeIf { it in reminderMinutes }
+    val vendorBatterySupported = background.vendorBattery != PermissionState.UNSUPPORTED
     fun openTime(kind: String, value: Int) { minutesInput = value.toString(); choosing = kind }
     fun closeTime() { focus.clearFocus(); keyboard?.hide(); choosing = null }
     fun saveTime() {
@@ -96,9 +120,15 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
         closeTime()
     }
     Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp).testTag("notification_settings"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Card(Modifier.fillMaxWidth()) {
-            SwitchPreference(settings.live, { onChange(settings.copy(live = it)) }, "使用实时通知",
-                modifier = Modifier.testTag("notify_live"))
+        if (background.hook !in setOf(BackgroundHookState.INACTIVE, BackgroundHookState.SCOPE_REQUIRED, BackgroundHookState.UNSUPPORTED)) Card(Modifier.fillMaxWidth()) {
+            SwitchPreference(backgroundEnhancement, onBackgroundEnhancement, "Xposed 后台提醒增强",
+                summary = background.hook.label, enabled = background.canEnable || backgroundEnhancement,
+                modifier = Modifier.testTag("notify_background_enhancement"))
+        }
+        if (status.island.visible) Card(Modifier.fillMaxWidth()) {
+            SwitchPreference(settings.island, { onChange(settings.copy(island = it)) }, "开启课程表超级岛",
+                summary = if (status.island.ready) null else "请在 LSPosed 中重启系统界面作用域",
+                enabled = status.island.ready, modifier = Modifier.testTag("notify_island"))
         }
         Card(Modifier.fillMaxWidth()) {
             SwitchPreference(settings.beforeClass, { onChange(settings.copy(beforeClass = it)) }, "上课提醒", modifier = Modifier.testTag("notify_start"))
@@ -110,14 +140,31 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
             if (settings.afterClass) ArrowPreference("提前时间", summary = reminderTimeLabel(settings.afterMinutes),
                 onClick = { openTime("end", settings.afterMinutes) }, modifier = Modifier.testTag("notify_end_time"))
         }
+        TextButton("测试通知", onTest, Modifier.fillMaxWidth().testTag("notify_test"), enabled = testEnabled,
+            colors = ButtonDefaults.textButtonColors(color = MiuixTheme.colorScheme.primary, textColor = MiuixTheme.colorScheme.onPrimary))
         Text("提醒权限", style = MiuixTheme.textStyles.title4, color = MiuixTheme.colorScheme.onSurface)
         Card(Modifier.fillMaxWidth()) {
             ArrowPreference("通知权限", summary = if (status.notifications) "已开启" else "未开启，课程提醒不可用", onClick = onNotifications, modifier = Modifier.testTag("notify_permission"))
             ArrowPreference("精确提醒", summary = if (status.exact) "已开启" else "未开启，提醒可能延迟", onClick = onExact)
-            if (status.promotionSupported) ArrowPreference("实时通知权限", summary = if (status.promoted) "已开启" else "未开启，将显示普通持续通知", onClick = onPromoted)
-            ArrowPreference("后台运行设置", summary = "关闭电池优化并开启自启动", onClick = onBackground)
+            ArrowPreference("自启动", summary = permissionLabel(background.autostart, "已开启", "未开启"),
+                onClick = onAutostart, modifier = Modifier.testTag("notify_autostart"))
+            ArrowPreference("电池优化", summary = buildString {
+                append("Android：${permissionLabel(background.batteryExemption, "已豁免", "未豁免")}")
+                if (vendorBatterySupported) append(" · 小米：${permissionLabel(background.vendorBattery, "无限制", "有限制")}")
+            },
+                onClick = { batteryDialog = true }, modifier = Modifier.testTag("notify_battery"))
         }
 
+    }
+    WindowDialog(show = batteryDialog, title = "电池优化", onDismissRequest = { batteryDialog = false },
+        modifier = Modifier.testTag("notify_battery_dialog")) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ArrowPreference("Android 电池优化", summary = permissionLabel(background.batteryExemption, "已豁免", "未豁免"),
+                onClick = onBattery, modifier = Modifier.testTag("notify_battery_android"))
+            if (vendorBatterySupported) ArrowPreference("小米省电策略", summary = permissionLabel(background.vendorBattery, "无限制", "有限制"),
+                onClick = onVendorBattery, modifier = Modifier.testTag("notify_battery_vendor"))
+            TextButton("关闭", { batteryDialog = false }, Modifier.fillMaxWidth().testTag("notify_battery_close"))
+        }
     }
     WindowDialog(show = choosing != null, title = if (choosing == "start") "上课提醒时间" else "下课提醒时间",
         onDismissRequest = ::closeTime, modifier = Modifier.testTag("notify_time_picker")) {
@@ -135,4 +182,11 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
             TextButton("取消", ::closeTime, Modifier.fillMaxWidth().testTag("notify_time_cancel"))
         }
     }
+}
+
+private fun permissionLabel(state: PermissionState, allowed: String, restricted: String) = when (state) {
+    PermissionState.ALLOWED -> allowed
+    PermissionState.RESTRICTED -> restricted
+    PermissionState.UNKNOWN -> "无法检测"
+    PermissionState.UNSUPPORTED -> "当前设备不支持"
 }

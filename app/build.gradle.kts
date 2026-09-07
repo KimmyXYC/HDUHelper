@@ -28,6 +28,7 @@ android {
             }
         }
         release {
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             optimization {
                 enable = true
             }
@@ -55,6 +56,8 @@ androidComponents {
 }
 
 dependencies {
+    compileOnly(libs.libxposed.api)
+    implementation(libs.libxposed.service)
     implementation(libs.zxing.core)
     implementation(libs.bouncycastle)
     implementation(platform(libs.androidx.compose.bom))

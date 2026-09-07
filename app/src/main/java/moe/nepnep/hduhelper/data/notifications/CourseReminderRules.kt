@@ -11,7 +11,7 @@ fun reminderTimeLabel(minutes: Int) = if (minutes == 0) "准点" else "提前 $m
 
 @Serializable
 data class NotificationSettings(
-    val live: Boolean = false,
+    val island: Boolean = false,
     val beforeClass: Boolean = true,
     val afterClass: Boolean = false,
     val beforeMinutes: Int = 10,
@@ -35,6 +35,8 @@ data class CourseReminder(
     val kind: CourseReminderKind,
     val target: Long,
     val begins: Long,
+    val courseStart: Long = target,
+    val courseEnd: Long = target,
 ) {
     val expires: Long get() = target + 60_000
     fun phase(now: Long) = when {
@@ -75,7 +77,7 @@ object CourseReminderRules {
                     if (target + 60_000 <= now) continue
                     val minutes = if (kind == CourseReminderKind.START) prefs.beforeMinutes else prefs.afterMinutes
                     val key = hash("${data.account}/${data.term.key}/${meeting.id}/$date/$run/$kind/$target")
-                    result += CourseReminder(key, hash(data.account), data.term.key, meeting, date, kind, target, target - minutes * 60_000L)
+                    result += CourseReminder(key, hash(data.account), data.term.key, meeting, date, kind, target, target - minutes * 60_000L, start, end)
                 }
             }
         }
@@ -94,7 +96,7 @@ object CourseReminderDelivery {
     fun ordinaryDue(reminders: List<CourseReminder>, records: Map<String, CourseReminderRecord>, now: Long, alarmAt: Long) =
         active(reminders, records, now).filter { it.begins >= alarmAt && records[it.key]?.delivered != true }
 
-    fun nextBoundary(reminders: List<CourseReminder>, now: Long, live: Boolean): Long? = reminders.asSequence()
-        .flatMap { if (live) sequenceOf(it.begins, it.target, it.expires) else sequenceOf(it.begins) }
+    fun nextBoundary(reminders: List<CourseReminder>, now: Long, island: Boolean): Long? = reminders.asSequence()
+        .flatMap { if (island) sequenceOf(it.begins, it.target, it.expires) else sequenceOf(it.begins) }
         .filter { it > now }.minOrNull()
 }

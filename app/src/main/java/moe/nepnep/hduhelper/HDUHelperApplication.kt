@@ -25,6 +25,8 @@ class AppContainer(application: Application) {
     val timetables = moe.nepnep.hduhelper.data.timetable.TimetableRepository(auth, moe.nepnep.hduhelper.data.timetable.androidTimetableStore(application))
     val schedules = moe.nepnep.hduhelper.data.schedule.ScheduleRepository(moe.nepnep.hduhelper.data.schedule.androidScheduleStore(application))
     val scheduleReminders = moe.nepnep.hduhelper.data.schedule.AndroidScheduleReminders(application, schedules)
+    val island = moe.nepnep.hduhelper.data.island.IslandAccess(application)
+    val background = moe.nepnep.hduhelper.data.background.BackgroundAccess(application, settings)
     val courseReminders = moe.nepnep.hduhelper.data.notifications.AndroidCourseReminders(application, this)
     init {
         timetables.onChanged = courseReminders::reschedule

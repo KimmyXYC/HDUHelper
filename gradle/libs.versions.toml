@@ -17,7 +17,11 @@ serialization = "1.11.0"
 zxing = "3.5.4"
 bouncycastle = "1.85.2"
 
+libxposed = "101.0.0"
+
 [libraries]
+libxposed-api = { module = "io.github.libxposed:api", version.ref = "libxposed" }
+libxposed-service = { module = "io.github.libxposed:service", version.ref = "libxposed" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

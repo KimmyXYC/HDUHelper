@@ -29,6 +29,7 @@ import moe.nepnep.hduhelper.data.auth.AuthStatus
 import moe.nepnep.hduhelper.data.campuscode.CampusCode
 import moe.nepnep.hduhelper.data.campuscode.CampusCodeSource
 import moe.nepnep.hduhelper.data.campuscode.CampusCodeException
+import moe.nepnep.hduhelper.data.campuscode.CampusCodeFailure
 import moe.nepnep.hduhelper.data.campuscode.QrCodeEncoder
 import moe.nepnep.hduhelper.data.campuscode.QrPixels
 
@@ -63,14 +64,20 @@ class CampusCodeViewModel(
     private var validUntil = 0L
     private data class CachedCode(val code: CampusCode, val image: QrPixels)
     private var cachedCode: CachedCode? = null
-    private data class Gate(val visible: Boolean, val online: Boolean, val account: String?, val generation: Long, val blocked: AuthStatus?)
+    private data class Gate(val visible: Boolean, val online: Boolean, val account: String?, val generation: Long, val blocked: AuthStatus?, val recovery: Long)
 
     init {
         viewModelScope.launch {
             var previousIdentity: Pair<String?, Long>? = null
+            var unavailable = false
+            var recovery = 0L
+            var wasOffline = false
             combine(visible, online, auth, generation) { shown, connected, state, version ->
+                if (state.status == AuthStatus.UNAVAILABLE) unavailable = true
+                else if (state.status == AuthStatus.AUTHENTICATED && unavailable) { unavailable = false; recovery++ }
+                else if (state.status == AuthStatus.SIGNED_OUT) unavailable = false
                 Gate(shown, connected, state.profile?.account, version,
-                    state.status.takeIf { it in listOf(AuthStatus.LOADING, AuthStatus.SIGNING_IN, AuthStatus.VERIFICATION_REQUIRED) })
+                    state.status.takeIf { it in listOf(AuthStatus.LOADING, AuthStatus.SIGNING_IN, AuthStatus.VERIFICATION_REQUIRED) }, recovery)
             }.distinctUntilChanged().collectLatest { gate ->
                 val identity = gate.account to gate.generation
                 if (identity != previousIdentity) {
@@ -86,7 +93,10 @@ class CampusCodeViewModel(
                     !gate.online -> CampusCodeUiState(CampusCodeStatus.ERROR, message = "网络未连接，联网后自动刷新")
                     else -> CampusCodeUiState(CampusCodeStatus.AUTHORIZING)
                 }
+                if (!gate.online) wasOffline = true
                 if (!gate.visible || !gate.online || gate.account == null || gate.blocked != null) return@collectLatest
+                val recoveringNetwork = wasOffline
+                wasOffline = false
                 coroutineScope {
                     activeScope = this
                     interval = 300L
@@ -101,14 +111,14 @@ class CampusCodeViewModel(
                             )
                         } else {
                             cachedCode = null
-                            refresh()?.join()
+                            startRefresh(automatic = true, waitFirst = recoveringNetwork)?.join()
                             validUntil = elapsed() + interval * 1000
                         }
                         while (isActive) {
                             val left = validUntil - elapsed()
                             mutableState.value = mutableState.value.copy(nextRefreshSeconds = ((left + 999) / 1000).coerceAtLeast(0))
                             if (left <= 0) {
-                                if (mutableState.value.status !in listOf(CampusCodeStatus.LOGIN_REQUIRED, CampusCodeStatus.VERIFICATION_REQUIRED)) refresh()
+                                if (mutableState.value.status !in listOf(CampusCodeStatus.LOGIN_REQUIRED, CampusCodeStatus.VERIFICATION_REQUIRED)) startRefresh(automatic = true)
                                 validUntil = elapsed() + interval * 1000
                             }
                             delay(250)
@@ -133,35 +143,50 @@ class CampusCodeViewModel(
     }
 
     /** Manual requests replace the code without extending its validity or countdown. */
-    fun refresh(): Job? {
+    fun refresh(): Job? = startRefresh(automatic = false)
+
+    private fun startRefresh(automatic: Boolean, waitFirst: Boolean = false): Job? {
         val scope = activeScope ?: return null
         if (request?.isActive == true) return request
         return scope.launch {
-            mutableState.value = mutableState.value.copy(refreshing = true, message = null)
-            try {
-                val code = source.refresh()
-                val image = withContext(compute) { QrCodeEncoder.encode(code.content) }
-                interval = code.refreshSeconds
-                cachedCode = CachedCode(code, image)
-                mutableState.value = mutableState.value.copy(status = CampusCodeStatus.READY, code = code, image = image, refreshing = false)
-            } catch (e: CancellationException) { throw e }
-            catch (e: AuthException) {
-                if (e.kind == AuthFailure.CANCELLED) return@launch
-                cachedCode = null
-                val status = when (e.kind) {
-                    AuthFailure.EXPIRED, AuthFailure.CREDENTIALS -> CampusCodeStatus.LOGIN_REQUIRED
-                    AuthFailure.VERIFICATION -> CampusCodeStatus.VERIFICATION_REQUIRED
-                    else -> CampusCodeStatus.ERROR
-                }
-                mutableState.value = CampusCodeUiState(status, message = e.message)
-            } catch (e: CampusCodeException) {
-                cachedCode = null
-                mutableState.value = CampusCodeUiState(CampusCodeStatus.ERROR, message = e.message)
-            } catch (_: Exception) {
-                cachedCode = null
-                mutableState.value = CampusCodeUiState(CampusCodeStatus.ERROR, message = "暂时无法生成二维码，请重试")
+            if (waitFirst) delay(1_000)
+            repeat(if (automatic) 3 else 1) { attempt ->
+                if (!fetchCode()) return@launch
+                if (automatic && attempt < 2) delay(if (attempt == 0) 2_000 else 8_000)
             }
         }.also { request = it }
+    }
+
+    /** Only transient transport/service failures are retried, never credentials or verification. */
+    private suspend fun fetchCode(): Boolean {
+        mutableState.value = mutableState.value.copy(refreshing = true, message = null)
+        try {
+            val code = source.refresh()
+            val image = withContext(compute) { QrCodeEncoder.encode(code.content) }
+            interval = code.refreshSeconds
+            cachedCode = CachedCode(code, image)
+            mutableState.value = mutableState.value.copy(status = CampusCodeStatus.READY, code = code, image = image, refreshing = false)
+            return false
+        } catch (e: CancellationException) { throw e }
+        catch (e: AuthException) {
+            if (e.kind == AuthFailure.CANCELLED) return false
+            cachedCode = null
+            val status = when (e.kind) {
+                AuthFailure.EXPIRED, AuthFailure.CREDENTIALS -> CampusCodeStatus.LOGIN_REQUIRED
+                AuthFailure.VERIFICATION -> CampusCodeStatus.VERIFICATION_REQUIRED
+                else -> CampusCodeStatus.ERROR
+            }
+            mutableState.value = CampusCodeUiState(status, message = e.message)
+            return e.kind in listOf(AuthFailure.NETWORK, AuthFailure.SERVICE)
+        } catch (e: CampusCodeException) {
+            cachedCode = null
+            mutableState.value = CampusCodeUiState(CampusCodeStatus.ERROR, message = e.message)
+            return e.kind in listOf(CampusCodeFailure.NETWORK, CampusCodeFailure.SERVICE)
+        } catch (_: Exception) {
+            cachedCode = null
+            mutableState.value = CampusCodeUiState(CampusCodeStatus.ERROR, message = "暂时无法生成二维码，请重试")
+            return false
+        }
     }
 
     override fun onCleared() { cachedCode = null; source.clear() }

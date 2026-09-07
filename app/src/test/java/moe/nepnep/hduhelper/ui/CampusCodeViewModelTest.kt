@@ -114,6 +114,7 @@ class CampusCodeViewModelTest {
                 online.value = true
                 runCurrent()
                 model.setVisible(true); runCurrent()
+                advanceTimeBy(1_000); runCurrent() // Reconnection waits briefly for the network to settle.
                 assertEquals(calls + 1, source.calls)
                 assertEquals(CampusCodeStatus.READY, model.state.value.status)
             }
@@ -212,6 +213,7 @@ class CampusCodeViewModelTest {
             online.value = false; runCurrent()
             assertNull(model.state.value.code)
             online.value = true; runCurrent()
+            advanceTimeBy(1_000); runCurrent()
             assertEquals(5, source.calls)
             auth.value = AuthState(AuthStatus.SIGNED_OUT); generation.value++; runCurrent()
             assertNull(model.state.value.image)

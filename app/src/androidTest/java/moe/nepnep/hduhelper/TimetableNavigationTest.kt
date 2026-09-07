@@ -38,7 +38,7 @@ class TimetableNavigationTest {
         compose.onNodeWithText("我的").performClick()
         compose.onNodeWithTag("open_notification_settings").performClick()
         compose.onNodeWithTag("notification_settings").assertIsDisplayed()
-        compose.onNodeWithTag("notify_live").assertIsDisplayed()
+        // The island switch is hidden unless this module has framework and scope authorization.
         compose.onNodeWithTag("notify_start").assertIsDisplayed()
         compose.onNodeWithTag("notify_end").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()

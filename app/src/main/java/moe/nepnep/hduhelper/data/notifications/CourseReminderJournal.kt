@@ -5,12 +5,13 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 
 @Serializable
 internal data class ReminderJournal(
+    @kotlinx.serialization.Transient val legacyPosted: List<Int> = emptyList(),
     val owner: String? = null,
-    val live: Boolean = false,
+    val island: Boolean = false,
     val records: Map<String, CourseReminderRecord> = emptyMap(),
     val posted: Map<String, Int> = emptyMap(),
     val nextId: Int = 400_000,
@@ -21,10 +22,10 @@ internal data class ReminderJournal(
 
     fun accepts(token: String, at: Long) = token.isNotEmpty() && token == this.token && at == alarmAt
 
-    fun reconcile(owner: String?, validKeys: Set<String>, activeKeys: Set<String>, live: Boolean, now: Long): ReminderJournal {
+    fun reconcile(owner: String?, validKeys: Set<String>, activeKeys: Set<String>, island: Boolean, now: Long): ReminderJournal {
         val sameOwner = this.owner == owner
-        val keep = if (!sameOwner || this.live && !live) emptySet() else if (live) activeKeys else validKeys
-        return copy(owner = owner, live = live,
+        val keep = if (!sameOwner || this.island && !island) emptySet() else if (island) activeKeys else validKeys
+        return copy(owner = owner, island = island,
             // Retain dismissed/delivered occurrences across toggle changes until their window ends.
             records = if (sameOwner) records.filterValues { it.expires > now } else emptyMap(),
             posted = posted.filterKeys { it in keep },
@@ -35,7 +36,13 @@ internal data class ReminderJournal(
 /** Delivery history contains hashes only and is deliberately excluded from Android backup. */
 internal class CourseReminderJournalStore(private val file: File) {
     private val json = Json { ignoreUnknownKeys = true }
-    @Synchronized fun read(): ReminderJournal = if (file.exists()) json.decodeFromString(file.readText()) else ReminderJournal()
+    @Synchronized fun read(): ReminderJournal {
+        if (!file.exists()) return ReminderJournal()
+        val text = file.readText()
+        val book = json.decodeFromString<ReminderJournal>(text)
+        val legacy = json.parseToJsonElement(text).jsonObject["live"]?.jsonPrimitive?.booleanOrNull == true
+        return if (legacy) book.copy(legacyPosted = book.posted.values.toList(), posted = emptyMap()) else book
+    }
 
     @Synchronized fun save(journal: ReminderJournal) {
         file.parentFile?.mkdirs()

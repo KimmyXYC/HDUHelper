@@ -8,10 +8,18 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <permission android:name="moe.nepnep.hduhelper.permission.REQUEST_BACKGROUND_HOST" android:protectionLevel="signature" />
+    <uses-permission android:name="moe.nepnep.hduhelper.permission.REQUEST_BACKGROUND_HOST" />
+
+    <queries>
+        <package android:name="com.android.systemui" />
+        <package android:name="miui.systemui.plugin" />
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.miui.powerkeeper" />
+    </queries>
 
     <application
         android:name=".HDUHelperApplication"
@@ -25,7 +33,13 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.HDUHelper">
-        <service android:name=".data.notifications.CourseLiveService" android:exported="false" android:foregroundServiceType="specialUse">
+        <provider android:name=".data.island.IslandBridgeProvider"
+            android:authorities="moe.nepnep.hduhelper.island.bridge" android:exported="true"
+            android:permission="android.permission.STATUS_BAR" />
+        <provider android:name=".data.background.BackgroundBridgeProvider"
+            android:authorities="moe.nepnep.hduhelper.background.bridge" android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <service android:name=".data.notifications.CourseIslandService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-enabled course reminder countdown, ending 60 seconds after the class boundary" />
         </service>

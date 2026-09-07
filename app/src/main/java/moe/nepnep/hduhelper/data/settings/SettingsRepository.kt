@@ -10,7 +10,7 @@ import java.security.MessageDigest
 import moe.nepnep.hduhelper.data.notifications.NotificationSettings
 
 enum class ThemeMode(val label: String) { SYSTEM("跟随系统"), LIGHT("浅色"), DARK("深色") }
-data class AppSettings(val theme: ThemeMode = ThemeMode.SYSTEM, val autoLogin: Boolean = true, val timetable: TimetableSettings = TimetableSettings(), val campusRevision: Long = 0, val notifications: NotificationSettings = NotificationSettings())
+data class AppSettings(val theme: ThemeMode = ThemeMode.SYSTEM, val autoLogin: Boolean = true, val timetable: TimetableSettings = TimetableSettings(), val campusRevision: Long = 0, val notifications: NotificationSettings = NotificationSettings(), val backgroundEnhancement: Boolean = false)
 
 interface AuthSettings {
     val autoLogin: Boolean
@@ -19,10 +19,12 @@ interface AuthSettings {
 
 class SettingsRepository(context: Context) : AuthSettings {
     private val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    init { preferences.edit { remove("notify_live") } }
     private val mutableState = MutableStateFlow(
         AppSettings(
+            backgroundEnhancement = preferences.getBoolean("background_enhancement", false),
             notifications = NotificationSettings(
-                preferences.getBoolean("notify_live", false), preferences.getBoolean("notify_start", true),
+                preferences.getBoolean("notify_island", false), preferences.getBoolean("notify_start", true),
                 preferences.getBoolean("notify_end", false), preferences.getInt("notify_start_minutes", 10),
                 preferences.getInt("notify_end_minutes", 1),
             ).normalized(),
@@ -37,6 +39,11 @@ class SettingsRepository(context: Context) : AuthSettings {
     val state: StateFlow<AppSettings> = mutableState.asStateFlow()
     override val autoLogin: Boolean get() = mutableState.value.autoLogin
 
+    fun setBackgroundEnhancement(enabled: Boolean) {
+        preferences.edit { putBoolean("background_enhancement", enabled) }
+        mutableState.value = mutableState.value.copy(backgroundEnhancement = enabled)
+    }
+
     fun claimNotificationPermissionPrompt(): Boolean {
         if (preferences.getBoolean("notify_permission_prompted", false)) return false
         preferences.edit { putBoolean("notify_permission_prompted", true) }
@@ -46,7 +53,7 @@ class SettingsRepository(context: Context) : AuthSettings {
     fun setNotifications(value: NotificationSettings) {
         val settings = value.normalized()
         preferences.edit {
-            putBoolean("notify_live", settings.live); putBoolean("notify_start", settings.beforeClass)
+            putBoolean("notify_island", settings.island); putBoolean("notify_start", settings.beforeClass)
             putBoolean("notify_end", settings.afterClass); putInt("notify_start_minutes", settings.beforeMinutes)
             putInt("notify_end_minutes", settings.afterMinutes)
         }

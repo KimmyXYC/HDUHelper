@@ -10,7 +10,7 @@ import android.os.PowerManager
 import moe.nepnep.hduhelper.HDUHelperApplication
 
 /** Exists only while an explicitly enabled course countdown is visible. */
-class CourseLiveService : Service() {
+class CourseIslandService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

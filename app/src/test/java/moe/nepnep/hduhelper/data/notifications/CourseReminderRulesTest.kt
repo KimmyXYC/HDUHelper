@@ -9,13 +9,13 @@ import org.junit.Test
 class CourseReminderRulesTest {
     private fun at(value: String) = LocalDateTime.parse(value).atZone(campusZone).toInstant().toEpochMilli()
     private val now = at("2026-09-14T08:00")
-    private val both = NotificationSettings(live = true, afterClass = true)
+    private val both = NotificationSettings(island = true, afterClass = true)
     private fun firstDay(settings: NotificationSettings = both, vararg courses: CourseMeeting) =
         CourseReminderRules.reminders(data(*courses), settings, now).filter { it.date == LocalDate.of(2026, 9, 14) }
 
     @Test fun defaultsAndInvalidStoredMinutesAreSafe() {
         val defaults = NotificationSettings()
-        assertFalse(defaults.live); assertTrue(defaults.beforeClass); assertFalse(defaults.afterClass)
+        assertFalse(defaults.island); assertTrue(defaults.beforeClass); assertFalse(defaults.afterClass)
         assertEquals(10, defaults.beforeMinutes); assertEquals(1, defaults.afterMinutes)
         assertEquals(defaults, defaults.copy(beforeMinutes = -1, afterMinutes = Int.MAX_VALUE).normalized())
         for (minutes in 0..30) {
@@ -59,8 +59,8 @@ class CourseReminderRulesTest {
     }
 
     @Test fun everySwitchCombinationRespectsCorrespondingReminder() {
-        for (live in listOf(false, true)) for (start in listOf(false, true)) for (end in listOf(false, true)) {
-            val reminders = firstDay(NotificationSettings(live, start, end), meeting("a"))
+        for (island in listOf(false, true)) for (start in listOf(false, true)) for (end in listOf(false, true)) {
+            val reminders = firstDay(NotificationSettings(island, start, end), meeting("a"))
             assertEquals((if (start) 1 else 0) + (if (end) 1 else 0), reminders.size)
             assertEquals(start, reminders.any { it.kind == CourseReminderKind.START })
             assertEquals(end, reminders.any { it.kind == CourseReminderKind.END })

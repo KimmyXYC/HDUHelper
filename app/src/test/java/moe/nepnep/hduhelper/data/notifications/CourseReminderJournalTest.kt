@@ -12,7 +12,7 @@ class CourseReminderJournalTest {
     @Test fun restartPreservesDeliveryDismissalAndRejectsStaleAlarm() {
         val file = File(directory.root, "journal.json")
         val key = CourseReminderRules.hash("synthetic occurrence")
-        val journal = ReminderJournal(owner = CourseReminderRules.hash("synthetic account"), live = true,
+        val journal = ReminderJournal(owner = CourseReminderRules.hash("synthetic account"), island = true,
             records = mapOf(key to CourseReminderRecord(2000, true, true)), posted = mapOf(key to 400001),
             nextId = 400002, token = "new", alarmAt = 1500)
         CourseReminderJournalStore(file).save(journal)
@@ -26,7 +26,7 @@ class CourseReminderJournalTest {
 
     @Test fun disablingLiveCancelsAllOngoingNotificationsAndRetainsDismissalAcrossToggles() {
         val record = CourseReminderRecord(2000, true, true)
-        val journal = ReminderJournal(owner = "owner", live = true, records = mapOf("key" to record), posted = mapOf("key" to 400000))
+        val journal = ReminderJournal(owner = "owner", island = true, records = mapOf("key" to record), posted = mapOf("key" to 400000))
         val disabled = journal.reconcile("owner", setOf("key"), emptySet(), false, 1000)
         assertTrue(disabled.posted.isEmpty())
         assertEquals(record, disabled.records["key"])
@@ -52,6 +52,18 @@ class CourseReminderJournalTest {
         val rescheduled = waiting.copy(token = "next", alarmAt = 2000)
         assertFalse(rescheduled.accepts("pending", 1000))
         assertNull(rescheduled.dueAlarmAt(1050))
+    }
+
+    @Test fun legacyLiveUpgradeCancelsOnlyOldOngoingIdsAndRetainsDeliveryClaims() {
+        val file = File(directory.root, "journal.json")
+        file.writeText("""{"owner":"owner","live":true,"records":{"key":{"expires":2000,"delivered":true}},"posted":{"key":400001}}""")
+        val migrated = CourseReminderJournalStore(file).read()
+        assertFalse(migrated.island)
+        assertEquals(listOf(400001), migrated.legacyPosted)
+        assertTrue(migrated.posted.isEmpty())
+        assertTrue(migrated.records.getValue("key").delivered)
+        CourseReminderJournalStore(file).save(migrated.copy(legacyPosted = emptyList()))
+        assertTrue(CourseReminderJournalStore(file).read().legacyPosted.isEmpty())
     }
 
     @Test fun missingFileStartsEmptyButCorruptionIsNotSilentlyReset() {

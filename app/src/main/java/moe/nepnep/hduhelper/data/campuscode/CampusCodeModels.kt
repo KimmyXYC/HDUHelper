@@ -8,7 +8,7 @@ data class CampusCodeProfile(val name: String, val identity: String, val college
     override fun toString() = "CampusCodeProfile([redacted])"
 }
 
-class CampusCode(val content: String, val profile: CampusCodeProfile, val refreshSeconds: Long, val updatedAt: Long) {
+class CampusCode(val content: String, val profile: CampusCodeProfile, val refreshSeconds: Long, val updatedAt: Long, val balance: String? = null) {
     override fun toString() = "CampusCode([redacted])"
 }
 

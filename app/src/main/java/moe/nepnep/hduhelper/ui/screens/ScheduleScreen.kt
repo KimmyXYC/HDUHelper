@@ -37,6 +37,14 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 private data class AgendaRow(val key: String, val title: String, val subtitle: String, val start: LocalDateTime?,
     val allDay: Boolean = false, val occurrence: ScheduleOccurrence? = null, val course: CourseMeeting? = null, val exam: ExamArrangement? = null)
 
+internal fun schedulePeriod(start: LocalDateTime?, allDay: Boolean, date: LocalDate): String = when {
+    allDay -> "全天"
+    start == null -> "时间待定"
+    start.toLocalDate() < date || start.hour < 12 -> "上午"
+    start.hour < 18 -> "下午"
+    else -> "晚上"
+}
+
 fun scheduleTimeLabel(event: ScheduleEvent): String {
     val start = event.startTime
     val end = event.endTime
@@ -207,14 +215,21 @@ private fun ScheduleDayList(state: ScheduleUiState, date: LocalDate, onDetail: (
                 Text("点击右上角 ＋ 添加日程", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
         }
-        items(rows, key = { it.key }) { row ->
-            Card(Modifier.fillMaxWidth().clickable {
-                if (row.exam != null) onExam(row.exam) else if (row.course != null) onCourse(row.course) else onDetail(row.occurrence?.key)
-            }.testTag("agenda_${row.key}")) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (row.exam != null) "考试" else if (row.course != null) "课程" else "自定义日程", style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
-                    Text(row.title, style = MiuixTheme.textStyles.title4)
-                    Text(row.subtitle, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.body2)
+        rows.groupBy { row -> schedulePeriod(row.start, row.allDay, date) }.forEach { (period, periodRows) ->
+            item(key = "period/$period") {
+                Text(period, Modifier.fillMaxWidth().padding(top = 8.dp).testTag("schedule_period_$period"),
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
+            items(periodRows, key = { it.key }) { row ->
+                Card(Modifier.fillMaxWidth().clickable {
+                    if (row.exam != null) onExam(row.exam) else if (row.course != null) onCourse(row.course) else onDetail(row.occurrence?.key)
+                }.testTag("agenda_${row.key}")) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (row.exam != null) "考试" else if (row.course != null) "课程" else "自定义日程", style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
+                        Text(row.title, style = MiuixTheme.textStyles.title4)
+                        Text(row.subtitle, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.body2)
+                    }
                 }
             }
         }

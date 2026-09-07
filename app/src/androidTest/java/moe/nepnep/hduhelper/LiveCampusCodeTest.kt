@@ -114,6 +114,9 @@ class LiveCampusCodeTest {
                     }
                     awaitReady()
                     assertEquals("SSO authorization must not submit the password again", 1, passwordLogins)
+                    assertTrue("Live user-info must contain a valid yuan balance", codeModel.state.value.code!!.balance != null)
+                    compose.onNodeWithTag("campus_balance").assertExists()
+                    stage("真实余额解析与页面显示通过（金额不输出）")
                     assertTrue(codeModel.state.value.code!!.profile.name.isNotBlank())
                     assertTrue(codeModel.state.value.code!!.profile.college.isNotBlank())
                     fun verifyRenderedQr() {

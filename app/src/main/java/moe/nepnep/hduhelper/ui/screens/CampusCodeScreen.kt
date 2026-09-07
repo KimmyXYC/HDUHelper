@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,10 +38,18 @@ fun CampusCodeScreen(state: CampusCodeUiState, onRefresh: () -> Unit, onLogin: (
     Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Card(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(), insideMargin = PaddingValues(24.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                state.code?.profile?.let { profile ->
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("${profile.name} · ${profile.identity}", style = MiuixTheme.textStyles.title2, modifier = Modifier.testTag("campus_identity"))
-                        if (profile.college.isNotBlank()) Text(profile.college, style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                state.code?.let { code ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("${code.profile.name} · ${code.profile.identity}", style = MiuixTheme.textStyles.title4,
+                                modifier = Modifier.testTag("campus_identity"))
+                            if (code.profile.college.isNotBlank()) Text(code.profile.college, style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                        Text(code.balance?.let { "余额 ¥$it" } ?: "余额暂不可用",
+                            style = MiuixTheme.textStyles.body2,
+                            modifier = Modifier.testTag("campus_balance"))
                     }
                 }
                 val image = state.image

@@ -77,7 +77,7 @@ class YmtApi(private val endpoints: YmtEndpoints = YmtEndpoints(), private val n
             val content = (raw as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull ?: protocol()
             if (content.isBlank() || content.length > 2048 || content.first() in '\u4e00'..'\u9fa5') protocol("学校暂未返回有效二维码，请重试")
             return CampusCode(content, CampusCodeProfile(info.text("name").ifEmpty { user.text("userName") },
-                identityName(user.text("mainClassNames")), info.text("schoolClass").ifEmpty { info.text("college") }), interval, now())
+                identityName(user.text("mainClassNames")), info.text("schoolClass").ifEmpty { info.text("college") }), interval, now(), balance(user))
         }
 
         private suspend fun get(path: String, params: Map<String, String> = emptyMap(), token: String? = null): JsonElement {
@@ -106,6 +106,14 @@ class YmtApi(private val endpoints: YmtEndpoints = YmtEndpoints(), private val n
     }
 
     companion object {
+        // The official voucher displays user-info.balance directly in yuan.
+        // Missing or malformed balances must not be presented as zero or block the QR.
+        internal fun balance(root: JsonObject): String? {
+            val raw = root.text("balance").trim()
+            if (!raw.matches(Regex("-?[0-9]{1,12}(\\.[0-9]{1,2})?"))) return null
+            return raw.toBigDecimalOrNull()?.setScale(2)?.toPlainString()
+        }
+
         internal fun refreshInterval(root: JsonObject): Long = (root["freshTime"] as? JsonPrimitive)?.longOrNull
             ?.takeIf { it > 0 && it <= Long.MAX_VALUE / 1000 } ?: 300L
 

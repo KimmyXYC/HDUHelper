@@ -51,7 +51,7 @@ class YmtApiTest {
             server.enqueue(data("{\"value\":\"synthetic-portal-token\"}"))
             server.enqueue(data("[{\"applicationName\":\"电子凭证\",\"appId\":\"dynamic-id\",\"envIp\":\"${server.url("/uias-h5/uias-app/voucher")}\"}]"))
             server.enqueue(data("{\"value\":\"synthetic-app-token\"}"))
-            server.enqueue(data("{\"id\":7,\"userNumber\":\"test-account\",\"mainClassNames\":\"本专科生\"}"))
+            server.enqueue(data("{\"balance\":123.45,\"id\":7,\"userNumber\":\"test-account\",\"mainClassNames\":\"本专科生\"}"))
             server.enqueue(data("{\"name\":\"测试用户\",\"schoolClass\":\"测试学院\",\"userNumber\":\"test-account\"}"))
             server.enqueue(data("{\"freshTime\":180}"))
             server.enqueue(data("\"SYNTHETIC-QR,123\""))
@@ -61,6 +61,7 @@ class YmtApiTest {
             assertEquals("SYNTHETIC-QR,123", code.content)
             assertEquals("测试学院", code.profile.college)
             assertEquals(180L, code.refreshSeconds)
+            assertEquals("123.45", code.balance)
             val requests = List(8) { server.takeRequest() }
             assertTrue(requests[0].target.contains("ticket=synthetic-ticket"))
             assertNull(requests[0].headers["Authorization"])
@@ -69,6 +70,15 @@ class YmtApiTest {
             assertEquals("/uias/authentication/index/token-h5?clientId=dynamic-id", requests[3].target)
             assertEquals("synthetic-app-token", requests[7].headers["Authorization"])
             assertTrue(requests[7].headers["Sign"]!!.matches(Regex("[0-9a-f]{128}")))
+        }
+    }
+
+    @Test fun balanceUsesYuanAndPreservesUnavailableValues() {
+        for ((raw, expected) in mapOf("0" to "0.00", "12.3" to "12.30", "\"123.45\"" to "123.45", "-2.50" to "-2.50")) {
+            assertEquals(expected, YmtApi.balance(Json.parseToJsonElement("{\"balance\":$raw}").jsonObject))
+        }
+        for (raw in listOf("{}", "{\"balance\":null}", "{\"balance\":\"\"}", "{\"balance\":\"NaN\"}", "{\"balance\":{}}")) {
+            assertNull(YmtApi.balance(Json.parseToJsonElement(raw).jsonObject))
         }
     }
 

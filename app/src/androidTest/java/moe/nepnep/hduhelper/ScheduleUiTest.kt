@@ -38,6 +38,25 @@ class ScheduleUiTest {
         file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    @Test fun agendaSeparatesAllDayMorningAfternoonAndEvening() {
+        val entries = listOf(
+            ScheduleSeries("all", ScheduleEvent("全天安排", start = "2026-09-07T00:00", end = "2026-09-08T00:00", allDay = true)),
+            ScheduleSeries("am", event.copy(title = "上午安排", repeat = ScheduleRepeat.NEVER)),
+            ScheduleSeries("pm", event.copy(title = "下午安排", start = "2026-09-07T12:00", end = "2026-09-07T13:00", repeat = ScheduleRepeat.NEVER)),
+            ScheduleSeries("night", event.copy(title = "晚上安排", start = "2026-09-07T18:00", end = "2026-09-07T19:00", repeat = ScheduleRepeat.NEVER)),
+        )
+        val state = ScheduleUiState(date, date, storage = ScheduleStorageState(ScheduleBook(entries), loaded = true))
+        compose.setContent { HDUHelperTheme {
+            ScheduleScreen(state, {}, {}, {}, { _, _ -> }, { _, _ -> }, {}, {}, Modifier.fillMaxSize())
+        } }
+        for ((period, id) in listOf("全天" to "all", "上午" to "am", "下午" to "pm", "晚上" to "night")) {
+            compose.onNodeWithTag("schedule_list_$date").performScrollToNode(hasTestTag("schedule_period_$period"))
+            compose.onNodeWithTag("schedule_period_$period").assertIsDisplayed()
+            compose.onNodeWithTag("schedule_list_$date").performScrollToNode(hasTestTag("agenda_$id/$date"))
+            compose.onNodeWithTag("agenda_$id/$date").assertIsDisplayed()
+        }
+    }
+
     @Test fun signedOutCalendarSwipesSynchronizesDatesAndKeepsLocalActions() {
         var state by mutableStateOf(ScheduleUiState(date, date,
             storage = ScheduleStorageState(ScheduleBook(listOf(ScheduleSeries("sample", event))), loaded = true), courseStatus = TimetableStatus.SIGNED_OUT))

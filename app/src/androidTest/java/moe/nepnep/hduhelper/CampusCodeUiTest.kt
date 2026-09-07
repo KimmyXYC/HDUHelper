@@ -6,9 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -58,21 +61,30 @@ class CampusCodeUiTest {
     }
 
     @Test fun darkThemeRenderedCodeDecodesAndFailureRemovesIt() {
-        val code = CampusCode("SYNTHETIC-NOT-A-CREDENTIAL,12345", CampusCodeProfile("测试用户", "学生", "测试学院"), 180, 1)
+        val code = CampusCode("SYNTHETIC-NOT-A-CREDENTIAL,12345", CampusCodeProfile("测试用户", "学生", "测试学院"), 180, 1, "123.45")
         var state by mutableStateOf(CampusCodeUiState(CampusCodeStatus.READY, code, QrCodeEncoder.encode(code.content), nextRefreshSeconds = 180))
         var clicks = 0
         compose.setContent { HDUHelperTheme(darkTheme = true) { CampusCodeScreen(state, { clicks++ }, {}, {}, Modifier.fillMaxSize()) } }
         compose.onNodeWithText("测试用户 · 学生").assertIsDisplayed()
         compose.onNodeWithText("测试学院").assertIsDisplayed()
+        compose.onNodeWithTag("campus_balance").assertTextEquals("余额 ¥123.45")
+        val nameBounds = compose.onNodeWithTag("campus_identity").getUnclippedBoundsInRoot()
+        val balanceBounds = compose.onNodeWithTag("campus_balance").getUnclippedBoundsInRoot()
+        assertTrue(balanceBounds.left > nameBounds.right)
+        assertEquals(nameBounds.top, balanceBounds.top)
         compose.onNodeWithText("180 秒后自动刷新").assertIsDisplayed()
         val bitmap = compose.onNodeWithTag("campus_qr").captureToImage().asAndroidBitmap()
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         val decoded = QRCodeReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(bitmap.width, bitmap.height, pixels))))
         assertEquals(code.content, decoded.text)
+        val preview = compose.onRoot().captureToImage().asAndroidBitmap()
+        val file = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.resolve("campus-balance-layout.png")
+        file.outputStream().use { preview.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         compose.onNodeWithTag("campus_refresh").performClick()
         compose.runOnIdle { assertEquals(1, clicks); state = CampusCodeUiState(CampusCodeStatus.ERROR, message = "网络连接失败") }
         compose.onNodeWithTag("campus_qr").assertDoesNotExist()
+        compose.onNodeWithTag("campus_balance").assertDoesNotExist()
         compose.onNodeWithText("网络连接失败").assertIsDisplayed()
     }
 

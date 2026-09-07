@@ -77,7 +77,7 @@ fun TimetableTopBar(state: TimetableUiState, onDefault: () -> Unit, onTerm: (Aca
 }
 
 @Composable
-private fun TermPicker(show: Boolean, catalog: TimetableCatalog, selected: AcademicTerm, onDismiss: () -> Unit, onSelect: (AcademicTerm) -> Unit) {
+internal fun TermPicker(show: Boolean, catalog: TimetableCatalog, selected: AcademicTerm, onDismiss: () -> Unit, onSelect: (AcademicTerm) -> Unit) {
     var year by remember(show, selected.key) { mutableStateOf(selected.year) }
     WindowDialog(show = show, title = "切换学期", onDismissRequest = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
             val campusModel: moe.nepnep.hduhelper.ui.CampusCodeViewModel = viewModel(factory = moe.nepnep.hduhelper.ui.CampusCodeViewModel.factory(container))
             val timetableModel: moe.nepnep.hduhelper.ui.TimetableViewModel = viewModel(factory = moe.nepnep.hduhelper.ui.TimetableViewModel.factory(container))
             val scheduleModel: moe.nepnep.hduhelper.ui.ScheduleViewModel = viewModel(factory = moe.nepnep.hduhelper.ui.ScheduleViewModel.factory(container))
+            val examsModel: moe.nepnep.hduhelper.ui.ExamsViewModel = viewModel(factory = moe.nepnep.hduhelper.ui.ExamsViewModel.factory(container))
             val scheduleLink by scheduleLinks.collectAsStateWithLifecycle()
             val settings by model.settings.collectAsStateWithLifecycle()
             val dark = when (settings.theme) {
@@ -47,7 +48,7 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
                 )
             }
-            HDUHelperTheme(darkTheme = dark) { HDUHelperApp(model, campusModel, timetableModel, scheduleModel, scheduleLink = scheduleLink, onScheduleLinkConsumed = { scheduleLinks.value = null }) }
+            HDUHelperTheme(darkTheme = dark) { HDUHelperApp(model, campusModel, timetableModel, scheduleModel, examsModel, scheduleLink = scheduleLink, onScheduleLinkConsumed = { scheduleLinks.value = null }) }
         }
     }
 }

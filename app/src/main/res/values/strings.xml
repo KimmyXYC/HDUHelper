@@ -9,7 +9,5 @@
     <string name="nav_campus_code">一码通</string>
     <string name="nav_applications">应用</string>
     <string name="nav_profile">我的</string>
-    <string name="applications_title">校园服务，触手可及</string>
-    <string name="applications_description">在这里发现常用校园应用，汇集学习与生活服务。</string>
     <string name="coming_soon">敬请期待</string>
 </resources>

@@ -70,6 +70,7 @@ fun HDUHelperApp(
     campusModel: CampusCodeViewModel,
     timetableModel: TimetableViewModel,
     scheduleModel: ScheduleViewModel,
+    examsModel: ExamsViewModel,
     modifier: Modifier = Modifier,
     scheduleLink: android.net.Uri? = null,
     onScheduleLinkConsumed: () -> Unit = {},
@@ -87,6 +88,7 @@ fun HDUHelperApp(
     val scheduleState by scheduleModel.state.collectAsStateWithLifecycle()
     val scheduleEditor by scheduleModel.editor.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val examsState by examsModel.state.collectAsStateWithLifecycle()
     val notificationModel: NotificationSettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = NotificationSettingsViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
     val notificationStatus by notificationModel.status.collectAsStateWithLifecycle()
@@ -106,6 +108,7 @@ fun HDUHelperApp(
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
     var loginReturnDestination by rememberSaveable { mutableStateOf(AppDestination.PROFILE) }
     var loginReturnToTimetableSettings by rememberSaveable { mutableStateOf(false) }
+    var loginReturnToExams by rememberSaveable { mutableStateOf(false) }
     val pageStateHolder = rememberSaveableStateHolder()
     val sensitive = route == "login" || route == "verification"
 
@@ -128,6 +131,10 @@ fun HDUHelperApp(
     LifecycleStartEffect(route, destination) {
         scheduleModel.setVisible(route == "main" && destination == AppDestination.SCHEDULE)
         onStopOrDispose { scheduleModel.setVisible(false) }
+    }
+    LifecycleStartEffect(route) {
+        examsModel.setVisible(route == "exams")
+        onStopOrDispose { examsModel.setVisible(false) }
     }
     LaunchedEffect(scheduleLink) {
         scheduleLink?.let { link ->
@@ -167,8 +174,13 @@ fun HDUHelperApp(
                 when (event) {
                     AppEvent.LoggedIn -> {
                         destination = loginReturnDestination
-                        if (!loginReturnToTimetableSettings || !nav.popBackStack("timetable_settings", false)) nav.popBackStack("main", false)
+                        when {
+                            loginReturnToExams && nav.popBackStack("exams", false) -> Unit
+                            loginReturnToTimetableSettings && nav.popBackStack("timetable_settings", false) -> Unit
+                            else -> nav.popBackStack("main", false)
+                        }
                         loginReturnToTimetableSettings = false
+                        loginReturnToExams = false
                     }
                     AppEvent.OpenVerification -> nav.navigate("verification") { launchSingleTop = true }
                     AppEvent.ClearWebSession -> VerificationCookies.clear()
@@ -184,7 +196,7 @@ fun HDUHelperApp(
         }
     }
     val back = {
-        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false }
+        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false; loginReturnToExams = false }
         nav.popBackStack()
         Unit
     }
@@ -241,7 +253,9 @@ fun HDUHelperApp(
                             AppDestination.CAMPUS_CODE -> CampusCodeScreen(campusState, { campusModel.refresh() },
                                 onLogin = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onVerify = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openVerification() }, modifier = Modifier.fillMaxSize())
-                            AppDestination.APPLICATIONS -> ApplicationsScreen(Modifier.fillMaxSize())
+                            AppDestination.APPLICATIONS -> ApplicationsScreen(Modifier.fillMaxSize(), onExams = {
+                                nav.navigate("exams") { launchSingleTop = true }
+                            })
                             AppDestination.PROFILE -> ProfileScreen(
                                 auth,
                                 onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
@@ -320,6 +334,19 @@ fun HDUHelperApp(
                         loginReturnDestination = AppDestination.PROFILE; loginReturnToTimetableSettings = true
                         model.openVerification()
                     })
+            }
+        }
+        composable("exams") {
+            SecondaryPage("考试安排", back) {
+                moe.nepnep.hduhelper.ui.screens.ExamsScreen(examsState, examsModel::selectTerm, examsModel::refresh,
+                    onLogin = {
+                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToExams = true
+                        model.openLogin(); nav.navigate("login") { launchSingleTop = true }
+                    },
+                    onVerify = {
+                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToExams = true
+                        model.openVerification()
+                    }, modifier = it)
             }
         }
         composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it, updateState, updateModel::check) } }

@@ -47,3 +47,7 @@ HyperOS 3 用户可在 LSPosed（现代 API 101）启用杭电助手模块，勾
 - [教务系统 SSO 与课表调研](docs/jw-sso-timetable-analysis.md)
 
 界面使用 Kotlin、Jetpack Compose 与 [MIUIX](https://github.com/compose-miuix-ui/miuix)。
+
+## 许可证
+
+本项目基于 [AGPL-3.0](LICENSE) 协议开源。

@@ -95,6 +95,7 @@ fun HDUHelperApp(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
     var loginReturnDestination by rememberSaveable { mutableStateOf(AppDestination.PROFILE) }
+    var loginReturnToTimetableSettings by rememberSaveable { mutableStateOf(false) }
     val pageStateHolder = rememberSaveableStateHolder()
     val sensitive = route == "login" || route == "verification"
 
@@ -109,7 +110,8 @@ fun HDUHelperApp(
         onStopOrDispose { campusModel.setVisible(false) }
     }
     LifecycleStartEffect(route, destination) {
-        timetableModel.setVisible(route == "main" && destination == AppDestination.TIMETABLE)
+        timetableModel.setVisible(route == "timetable_settings" || route == "main" && destination == AppDestination.TIMETABLE,
+            resetToDefault = route != "timetable_settings")
         onStopOrDispose { timetableModel.setVisible(false) }
     }
     LifecycleStartEffect(route, destination) {
@@ -152,7 +154,11 @@ fun HDUHelperApp(
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             model.events.collect { event ->
                 when (event) {
-                    AppEvent.LoggedIn -> { destination = loginReturnDestination; nav.popBackStack("main", false) }
+                    AppEvent.LoggedIn -> {
+                        destination = loginReturnDestination
+                        if (!loginReturnToTimetableSettings || !nav.popBackStack("timetable_settings", false)) nav.popBackStack("main", false)
+                        loginReturnToTimetableSettings = false
+                    }
                     AppEvent.OpenVerification -> nav.navigate("verification") { launchSingleTop = true }
                     AppEvent.ClearWebSession -> VerificationCookies.clear()
                 }
@@ -167,7 +173,7 @@ fun HDUHelperApp(
         }
     }
     val back = {
-        if (sensitive) model.cancelLogin()
+        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false }
         nav.popBackStack()
         Unit
     }
@@ -292,7 +298,18 @@ fun HDUHelperApp(
             SecondaryPage("外观设置", back) { AppearanceScreen(settings.theme, model::setTheme, it) }
         }
         composable("timetable_settings") {
-            SecondaryPage("课表设置", back) { TimetableSettingsScreen(timetableState, timetableModel::setSettings, timetableModel::setCampus, it) }
+            SecondaryPage("课表设置", back) {
+                TimetableSettingsScreen(timetableState, timetableModel::setSettings, timetableModel::setCampus, it,
+                    onRefresh = timetableModel::refresh,
+                    onLogin = {
+                        loginReturnDestination = AppDestination.PROFILE; loginReturnToTimetableSettings = true
+                        model.openLogin(); nav.navigate("login") { launchSingleTop = true }
+                    },
+                    onVerify = {
+                        loginReturnDestination = AppDestination.PROFILE; loginReturnToTimetableSettings = true
+                        model.openVerification()
+                    })
+            }
         }
         composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it) } }
     }

@@ -126,6 +126,24 @@ class TimetableUiTest {
         }finally {repository.setTimetable(original);repository.setTimetableCampus("synthetic-settings","2026-3",null)}
     }
 
+    @Test fun campusOptionsShowLoadingRetryAndFetchedChoices() {
+        var state by mutableStateOf(TimetableUiState(status = TimetableStatus.LOADING))
+        var retries = 0
+        var campus: String? = null
+        compose.setContent { HDUHelperTheme {
+            TimetableSettingsScreen(state, {}, { campus = it }, onRefresh = { retries++ })
+        } }
+        compose.onNodeWithText("先打开课表以读取校区选项").assertDoesNotExist()
+        compose.onNodeWithTag("campus_options_status").assertTextEquals("正在获取校区选项…")
+        compose.onNodeWithTag("campus_options_retry").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(status = TimetableStatus.ERROR, message = "网络未连接") }
+        compose.onNodeWithTag("campus_options_retry").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, retries); state = initial() }
+        compose.onNodeWithTag("campus_options_status").assertDoesNotExist()
+        compose.onNodeWithTag("campus_2").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("2", campus) }
+    }
+
     @Test fun denseGridVisualReferences() {
         val base=fixture()
         val dense=(1..5).flatMap { day -> listOf(3..5,6..8,10..12).mapIndexed { index, range ->

@@ -125,4 +125,45 @@ class TimetableViewModelTest {
             assertEquals("2",model.state.value.clock!!.id)
         }finally{store.clear();Dispatchers.resetMain()}
     }
+
+    @Test fun settingsEntryLoadsCampusesWithoutOpeningTimetableAndRetriesAfterNetworkRecovery() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val store = ViewModelStore()
+        try {
+            val source = Source().apply { values.clear() }
+            val net = MutableStateFlow(false)
+            val model = TimetableViewModel(source, MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), net, MutableStateFlow(AppSettings()), { _, _ -> null }, {}, { _, _, _ -> })
+            store.put("test", model)
+            model.setVisible(true, resetToDefault = false); runCurrent()
+            assertEquals(TimetableStatus.ERROR, model.state.value.status)
+            assertNull(model.state.value.data)
+            assertEquals(0, source.calls)
+            net.value = true; runCurrent()
+            assertEquals(TimetableStatus.READY, model.state.value.status)
+            assertTrue(model.state.value.data!!.clocks.isNotEmpty())
+            assertEquals(1, source.calls)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun settingsEntryPreservesBrowsedTermWeekAndCampusAndCancelsWhenHidden() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val store = ViewModelStore()
+        try {
+            val source = Source()
+            val model = TimetableViewModel(source, MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(true), MutableStateFlow(AppSettings()), { _, _ -> "2" }, {}, { _, _, _ -> })
+            store.put("test", model)
+            model.setVisible(true); runCurrent()
+            val previous = AcademicTerm("2025", "12", "2")
+            model.selectTerm(previous); runCurrent(); model.selectWeek(5)
+            model.setVisible(false)
+            source.pause = CompletableDeferred()
+            model.setVisible(true, resetToDefault = false); runCurrent()
+            assertEquals(previous, model.state.value.selectedTerm)
+            assertEquals(5, model.state.value.week)
+            assertEquals("2", model.state.value.selectedCampus)
+            val displayed = model.state.value.data
+            model.setVisible(false); source.pause!!.complete(Unit); runCurrent()
+            assertEquals(displayed, model.state.value.data)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
 }

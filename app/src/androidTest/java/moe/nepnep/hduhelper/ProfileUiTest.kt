@@ -1,10 +1,13 @@
 package moe.nepnep.hduhelper
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.geometry.Offset
@@ -68,9 +71,30 @@ class ProfileUiTest {
     @Test fun aboutAndLauncherUseChineseAppName() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals("杭电助手", context.applicationInfo.loadLabel(context.packageManager).toString())
-        compose.setContent { HDUHelperTheme { AboutScreen(Modifier.fillMaxSize()) } }
+        val opened = mutableListOf<String>()
+        var dark by mutableStateOf(false)
+        val uriHandler = object : UriHandler {
+            override fun openUri(uri: String) { opened += uri }
+        }
+        compose.setContent {
+            CompositionLocalProvider(LocalUriHandler provides uriHandler) {
+                HDUHelperTheme(darkTheme = dark) { AboutScreen(Modifier.fillMaxSize()) }
+            }
+        }
         compose.onNodeWithText("杭电助手").assertIsDisplayed()
         compose.onNodeWithText("HDUHelper").assertDoesNotExist()
+        for (theme in listOf(false, true)) {
+            compose.runOnIdle { dark = theme }
+            compose.onNodeWithText("项目地址").assertIsDisplayed()
+            compose.onNodeWithText("本项目基于 AGPL-3.0 协议开源").assertIsDisplayed()
+            compose.onNodeWithTag("about_project").captureToImage().asAndroidBitmap().also { bitmap ->
+                context.cacheDir.resolve("about-project-$theme.png").outputStream().use {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+            }
+            compose.onNodeWithTag("about_project").performClick()
+        }
+        compose.runOnIdle { assertEquals(List(2) { "https://github.com/KimmyXYC/HDUHelper" }, opened) }
     }
 
     @Test fun logoutRequiresConfirmationInLightTheme() = verifyLogoutConfirmation(darkTheme = false)

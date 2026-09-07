@@ -91,13 +91,13 @@ class TimetableViewModel(
     }
     private data class Gate(val auth: AuthState, val generation: Long, val online: Boolean, val settings: AppSettings)
 
-    fun setVisible(value: Boolean) {
+    fun setVisible(value: Boolean, resetToDefault: Boolean = true) {
         if (visible == value) return
         visible = value
         if (!value) { cancel(); return }
-        defaultPending = true
+        defaultPending = resetToDefault || mutable.value.selectedTerm == null
         mutable.value = mutable.value.copy(today = today())
-        if (!blocked && auth.value.profile != null) load(true)
+        if (!blocked && auth.value.profile != null) load(defaultPending)
     }
 
     fun refresh() { if (request?.isActive != true) load(defaultPending, userInitiated = true) }

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.Timeout
@@ -43,6 +44,19 @@ class TimetableNavigationTest {
         compose.onNodeWithTag("notify_end").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithTag("open_notification_settings").assertIsDisplayed()
+    }
+
+    @Test fun settingsFetchCampusChoicesBeforeTimetableIsOpened() {
+        org.junit.Assume.assumeTrue(androidx.test.platform.app.InstrumentationRegistry.getArguments()
+            .getString("campusSettings") == "true")
+        compose.onNodeWithText("我的").performClick()
+        compose.onNodeWithTag("open_timetable_settings").performClick()
+        compose.waitUntil(60_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasTestTag("campus_auto")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("campus_auto").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("campus_options_status").assertDoesNotExist()
+        compose.onNodeWithContentDescription("返回").performClick()
     }
 
 }

@@ -22,6 +22,7 @@ data class ScheduleUiState(
     val refreshing: Boolean = false,
     val offline: Boolean = false,
     val detailKey: String? = null,
+    val courseDetailId: String? = null,
     val error: String? = null,
     val reminderStatus: String? = null,
 ) {
@@ -40,7 +41,7 @@ class ScheduleViewModel(
     private val repository: ScheduleRepository,
     private val source: TimetableSource,
     private val auth: StateFlow<AuthState>,
-    generation: StateFlow<Long>,
+    private val generation: StateFlow<Long>,
     online: Flow<Boolean>,
     private val reminders: ScheduleReminderScheduler,
     private val now: () -> LocalDateTime = { LocalDateTime.now(campusZone) },
@@ -53,7 +54,9 @@ class ScheduleViewModel(
     private var connected = false
     private var blocked = true
     private var identity: Pair<String?, Long>? = null
+    private val readyIdentity = MutableStateFlow<Pair<String?, Long>?>(null)
     private var request: Job? = null
+    private var courseLink: Job? = null
     private var ticker: Job? = null
     private var sequence = 0L
 
@@ -67,7 +70,7 @@ class ScheduleViewModel(
                 val resume = (!connected && net) || (blocked && a.status !in blockedStatuses)
                 connected = net
                 blocked = a.status in blockedStatuses
-                if (changed) { identity = owner; cancelCourses(); mutable.update { it.copy(courses = null, courseMessage = null) } }
+                if (changed) { identity = owner; cancelCourses(); mutable.update { it.copy(courses = null, courseMessage = null, courseDetailId = null) } }
                 mutable.update { it.copy(offline = !net, courseStatus = when {
                     a.status == AuthStatus.VERIFICATION_REQUIRED -> TimetableStatus.VERIFICATION_REQUIRED
                     owner.first == null && !blocked -> TimetableStatus.SIGNED_OUT
@@ -77,14 +80,15 @@ class ScheduleViewModel(
                 }) }
                 if (blocked || !net) cancelCourses()
                 if (visible && !blocked && owner.first != null && (changed || resume)) loadCourses()
+                readyIdentity.value = owner
             }
         }
     }
 
     fun retryStorage() { viewModelScope.launch { try { repository.load() } catch (_: Exception) { /* State carries the retryable error. */ } } }
-    fun selectDate(date: LocalDate) { mutable.update { it.copy(date = date, detailKey = null) } }
+    fun selectDate(date: LocalDate) { mutable.update { it.copy(date = date, detailKey = null, courseDetailId = null) } }
     fun today() = selectDate(now().toLocalDate())
-    fun showDetail(key: String?) { mutable.update { it.copy(detailKey = key, error = null) } }
+    fun showDetail(key: String?) { mutable.update { it.copy(detailKey = key, courseDetailId = null, error = null) } }
     fun foreground() {
         val today = now().toLocalDate()
         mutable.update { it.copy(today = today, date = if (it.date == it.today) today else it.date, reminderStatus = reminders.status()) }
@@ -192,6 +196,33 @@ class ScheduleViewModel(
             catch (_: Exception) { mutable.update { it.copy(error = "删除失败，请重试") } }
         }
     }
+    fun openCourseNotification(accountKey: String, termKey: String, meetingId: String, date: LocalDate) {
+        courseLink?.cancel()
+        courseLink = viewModelScope.launch {
+            auth.first { it.status !in setOf(AuthStatus.LOADING, AuthStatus.SIGNING_IN) }
+            val account = auth.value.profile?.account
+            if (account == null || moe.nepnep.hduhelper.data.notifications.CourseReminderRules.hash(account) != accountKey) {
+                mutable.update { it.copy(date = date, courseDetailId = null, error = "该课程属于其他账号或登录已失效") }
+                return@launch
+            }
+            val ownerGeneration = generation.value
+            // Wait until the auth observer has cleared the previous account's UI state.
+            readyIdentity.first { it != null && it == (auth.value.profile?.account to generation.value) }
+            if (auth.value.profile?.account != account || generation.value != ownerGeneration) return@launch
+            try {
+                val latest = source.cached(account)
+                val data = latest?.let { if (it.term.key == it.catalog.current.key) it else source.cached(account, it.catalog.current) }
+                if (auth.value.profile?.account != account || generation.value != ownerGeneration) return@launch
+                val match = data?.takeIf { it.term.key == termKey }?.let { ScheduleRules.courses(it, date) }?.firstOrNull { it.id == meetingId }
+                mutable.update { it.copy(date = date, courses = data, detailKey = null, courseDetailId = match?.id,
+                    error = if (match == null) "该课程已修改或不属于当前学期，请刷新课表" else null) }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                if (auth.value.profile?.account == account && generation.value == ownerGeneration) mutable.update { it.copy(error = "课程读取失败，请重试") }
+            }
+        }
+    }
+
     fun openNotification(seriesId: String, originalDate: LocalDate, date: LocalDate) {
         viewModelScope.launch {
             try {

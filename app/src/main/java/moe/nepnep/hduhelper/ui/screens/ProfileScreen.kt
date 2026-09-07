@@ -48,6 +48,7 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
     actionError: String? = null,
     onTimetableSettings: () -> Unit = {},
+    onNotificationSettings: () -> Unit = {},
 ) {
     val busy = auth.status in listOf(AuthStatus.LOADING, AuthStatus.SIGNING_IN, AuthStatus.REFRESHING)
     var showLogoutConfirmation by remember(auth.profile?.account, auth.status) { mutableStateOf(false) }
@@ -103,6 +104,7 @@ fun ProfileScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 ArrowPreference(title = "外观设置", onClick = onAppearance, modifier = Modifier.testTag("open_appearance"))
                 ArrowPreference(title = "课表设置", onClick = onTimetableSettings, modifier = Modifier.testTag("open_timetable_settings"))
+                ArrowPreference(title = "通知设置", onClick = onNotificationSettings, modifier = Modifier.testTag("open_notification_settings"))
                 ArrowPreference(title = "关于应用", onClick = onAbout)
             }
         }

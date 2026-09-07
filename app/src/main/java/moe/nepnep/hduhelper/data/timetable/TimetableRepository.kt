@@ -19,6 +19,7 @@ class TimetableRepository(
     private val endpoints: JwEndpoints = JwEndpoints(),
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : TimetableSource {
+    var onChanged: () -> Unit = {}
     private val work = Mutex()
     private val publication = Any()
     private val epoch = AtomicLong()
@@ -28,6 +29,7 @@ class TimetableRepository(
         epoch.incrementAndGet()
         session.set(null)
         store.clear()
+        onChanged()
     }
 
     override suspend fun cached(account: String, term: AcademicTerm?): TimetableData? = withContext(io) {
@@ -48,6 +50,7 @@ class TimetableRepository(
             try { store.save(result) } catch (_: Exception) { throw AuthException(AuthFailure.STORAGE, "课表缓存保存失败，请重试") }
         }
         check(identity, captured)
+        onChanged()
         result
     }
 

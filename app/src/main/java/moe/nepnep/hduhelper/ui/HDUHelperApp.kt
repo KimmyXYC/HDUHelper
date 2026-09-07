@@ -87,6 +87,9 @@ fun HDUHelperApp(
     val scheduleState by scheduleModel.state.collectAsStateWithLifecycle()
     val scheduleEditor by scheduleModel.editor.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val notificationModel: NotificationSettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = NotificationSettingsViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
+    val notificationStatus by notificationModel.status.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
@@ -96,6 +99,7 @@ fun HDUHelperApp(
 
     LifecycleStartEffect(Unit) {
         model.onForeground()
+        notificationModel.foreground()
         scheduleModel.foreground()
         onStopOrDispose { model.onBackground() }
     }
@@ -122,6 +126,15 @@ fun HDUHelperApp(
                     if (sensitive) model.cancelLogin()
                     nav.popBackStack("main", false)
                     scheduleModel.openNotification(parts[0], original, date)
+                }
+            }
+            if (link.scheme == "hduhelper" && link.host == "course" && parts.size == 4) {
+                val date = runCatching { java.time.LocalDate.parse(parts[3]) }.getOrNull()
+                if (date != null) {
+                    destination = AppDestination.SCHEDULE
+                    if (sensitive) model.cancelLogin()
+                    nav.popBackStack("main", false)
+                    scheduleModel.openCourseNotification(parts[0], parts[1], parts[2], date)
                 }
             }
             onScheduleLinkConsumed()
@@ -216,6 +229,7 @@ fun HDUHelperApp(
                                 onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onAppearance = { nav.navigate("appearance") { launchSingleTop = true } },
                                 onTimetableSettings = { nav.navigate("timetable_settings") { launchSingleTop = true } },
+                                onNotificationSettings = { nav.navigate("notification_settings") { launchSingleTop = true } },
                                 onLogout = model::logout,
                                 onAbout = { nav.navigate("about") { launchSingleTop = true } },
                                 onVerify = { loginReturnDestination = AppDestination.PROFILE; model.openVerification() },
@@ -264,6 +278,12 @@ fun HDUHelperApp(
         composable("verification") {
             SecondaryPage("官方登录", back, resizeForIme = false) { pageModifier ->
                 VerificationScreen(model.verificationSession(), verificationError, model::verificationFinished, model::verificationFailed, pageModifier)
+            }
+        }
+        composable("notification_settings") {
+            SecondaryPage("通知设置", back) { pageModifier ->
+                moe.nepnep.hduhelper.ui.screens.NotificationSettingsPage(settings.notifications, notificationStatus,
+                    notificationModel::update, notificationModel::foreground, notificationModel::claimPermissionPrompt, pageModifier)
             }
         }
         composable("appearance") {

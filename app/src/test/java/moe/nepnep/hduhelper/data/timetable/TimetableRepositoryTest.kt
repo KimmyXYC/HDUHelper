@@ -38,7 +38,10 @@ class TimetableRepositoryTest {
                 }
             }
         },io=StandardTestDispatcher(testScheduler))
+        var changes = 0
+        repo.onChanged = { changes++ }
         repo.refresh(term,catalog)
+        assertEquals(1, changes)
         assertEquals(2,auth.grants)
         assertNotNull(repo.cached("student",term))
         failure=TimetableFailure.PERMISSION
@@ -48,6 +51,9 @@ class TimetableRepositoryTest {
         failure=TimetableFailure.AUTHORIZATION
         assertTrue(runCatching { repo.refresh(term,catalog) }.isFailure)
         assertEquals(3,auth.grants)
+        assertEquals(1, changes)
+        repo.clear()
+        assertEquals(2, changes)
     }
     @Test fun accountChangePreventsLateCacheWrites()=runTest {
         val auth=Authorizer();val store=Store();val release=CompletableDeferred<Unit>()

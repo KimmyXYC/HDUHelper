@@ -31,4 +31,18 @@ class TimetableNavigationTest {
         compose.onNodeWithText("课表").performClick()
         compose.onNodeWithTag("timetable_screen").assertIsDisplayed()
     }
+    @Test fun notificationSettingsEntryAndBackNavigationAreConnected() {
+        // Avoid interacting with real runtime permission dialogs during unattended UI tests.
+        org.junit.Assume.assumeTrue(androidx.core.content.ContextCompat.checkSelfPermission(compose.activity,
+            android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        compose.onNodeWithText("我的").performClick()
+        compose.onNodeWithTag("open_notification_settings").performClick()
+        compose.onNodeWithTag("notification_settings").assertIsDisplayed()
+        compose.onNodeWithTag("notify_live").assertIsDisplayed()
+        compose.onNodeWithTag("notify_start").assertIsDisplayed()
+        compose.onNodeWithTag("notify_end").assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithTag("open_notification_settings").assertIsDisplayed()
+    }
+
 }

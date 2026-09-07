@@ -11,6 +11,7 @@ class HDUHelperApplication : Application() {
         super.onCreate()
         android.webkit.WebView.setDataDirectorySuffix("hdu_auth")
         container.scheduleReminders.reschedule()
+        container.courseReminders.reschedule()
     }
 
     val container: AppContainer by lazy { AppContainer(this) }
@@ -24,7 +25,9 @@ class AppContainer(application: Application) {
     val timetables = moe.nepnep.hduhelper.data.timetable.TimetableRepository(auth, moe.nepnep.hduhelper.data.timetable.androidTimetableStore(application))
     val schedules = moe.nepnep.hduhelper.data.schedule.ScheduleRepository(moe.nepnep.hduhelper.data.schedule.androidScheduleStore(application))
     val scheduleReminders = moe.nepnep.hduhelper.data.schedule.AndroidScheduleReminders(application, schedules)
+    val courseReminders = moe.nepnep.hduhelper.data.notifications.AndroidCourseReminders(application, this)
     init {
+        timetables.onChanged = courseReminders::reschedule
         schedules.onChanged = scheduleReminders::reschedule
         auth.onSessionInvalidated(campusCodes::clear)
         auth.onSessionInvalidated(timetables::clear)

@@ -7,9 +7,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import moe.nepnep.hduhelper.data.timetable.TimetableSettings
 import java.security.MessageDigest
+import moe.nepnep.hduhelper.data.notifications.NotificationSettings
 
 enum class ThemeMode(val label: String) { SYSTEM("跟随系统"), LIGHT("浅色"), DARK("深色") }
-data class AppSettings(val theme: ThemeMode = ThemeMode.SYSTEM, val autoLogin: Boolean = true, val timetable: TimetableSettings = TimetableSettings(), val campusRevision: Long = 0)
+data class AppSettings(val theme: ThemeMode = ThemeMode.SYSTEM, val autoLogin: Boolean = true, val timetable: TimetableSettings = TimetableSettings(), val campusRevision: Long = 0, val notifications: NotificationSettings = NotificationSettings())
 
 interface AuthSettings {
     val autoLogin: Boolean
@@ -20,6 +21,11 @@ class SettingsRepository(context: Context) : AuthSettings {
     private val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val mutableState = MutableStateFlow(
         AppSettings(
+            notifications = NotificationSettings(
+                preferences.getBoolean("notify_live", false), preferences.getBoolean("notify_start", true),
+                preferences.getBoolean("notify_end", false), preferences.getInt("notify_start_minutes", 10),
+                preferences.getInt("notify_end_minutes", 1),
+            ).normalized(),
             theme = ThemeMode.entries.firstOrNull { it.name == preferences.getString("theme", null) } ?: ThemeMode.SYSTEM,
             autoLogin = preferences.getBoolean("auto_login", true),
             timetable = TimetableSettings(
@@ -30,6 +36,22 @@ class SettingsRepository(context: Context) : AuthSettings {
     )
     val state: StateFlow<AppSettings> = mutableState.asStateFlow()
     override val autoLogin: Boolean get() = mutableState.value.autoLogin
+
+    fun claimNotificationPermissionPrompt(): Boolean {
+        if (preferences.getBoolean("notify_permission_prompted", false)) return false
+        preferences.edit { putBoolean("notify_permission_prompted", true) }
+        return true
+    }
+
+    fun setNotifications(value: NotificationSettings) {
+        val settings = value.normalized()
+        preferences.edit {
+            putBoolean("notify_live", settings.live); putBoolean("notify_start", settings.beforeClass)
+            putBoolean("notify_end", settings.afterClass); putInt("notify_start_minutes", settings.beforeMinutes)
+            putInt("notify_end_minutes", settings.afterMinutes)
+        }
+        mutableState.value = mutableState.value.copy(notifications = settings)
+    }
 
     fun setTimetable(value: TimetableSettings) {
         preferences.edit {

@@ -112,7 +112,11 @@ class ScheduleRestoreReceiver : BroadcastReceiver() {
                 Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_MY_PACKAGE_REPLACED, AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED)) return
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            try { (context.applicationContext as HDUHelperApplication).container.scheduleReminders.reconcile() }
+            try {
+                val container = (context.applicationContext as HDUHelperApplication).container
+                container.courseReminders.reconcileSafely()
+                container.scheduleReminders.reconcile()
+            }
             catch (_: Exception) { /* Unavailable Keystore/storage will be retried after unlocking/foreground. */ }
             finally { pending.finish() }
         }

@@ -103,7 +103,8 @@ fun ScheduleScreen(
         }
     }
     AppDatePicker(chooseDate, state.date, { chooseDate = false }, { chooseDate = false; onDate(it) })
-    CourseDetails(course, data?.clocks.orEmpty(), 1, 0, { course = null }, {})
+    val linkedCourse = data?.let { ScheduleRules.courses(it, state.date) }?.firstOrNull { it.id == state.courseDetailId }
+    CourseDetails(course ?: linkedCourse, data?.clocks.orEmpty(), 1, 0, { course = null; onDetail(null) }, {})
     WindowDialog(show = detail != null && operation == null, title = detail?.event?.title, onDismissRequest = { onDetail(null) }, modifier = Modifier.testTag("schedule_details")) {
         detail?.let { occurrence ->
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {

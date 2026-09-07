@@ -45,6 +45,22 @@ adb shell am instrument -w \
 
 自定义日程按北京时间计算，与校园账号无关，使用独立 Keystore 密钥保存在 `noBackupFilesDir/schedule`。全天日程内部使用不包含结束日的区间，表单显示包含结束日；每月和每年重复遇到不存在的日期时跳过。重复系列保存原始规则和单次例外，整个系列改变开始日期或重复规则时需要确认清除例外。提醒只安排下一次，通知权限关闭时不发送，缺少精确闹钟权限时使用可能延迟的普通闹钟。强行停止应用后需重新打开应用恢复调度；系统/厂商后台限制仍可能影响提醒。
 
+### 课程通知回归
+
+“我的 → 通知设置”默认仅开启上课提醒（提前 10 分钟），下课提醒默认提前 1 分钟但关闭，实时通知默认关闭。两种提前量均通过输入框填写 0–30 的整数分钟，0 表示准点提醒。连续节次按一整段处理，使用课程所属校区的作息时间；提醒只读取当前账号、当前学期的缓存，离线无需登录，浏览其他学期和课表显示过滤不改变提醒。
+
+普通模式在配置时间提醒一次。实时模式仅为已开启的提醒显示倒计时，到点转为正计时并在 60 秒后移除；关闭本次提醒会保留取消记录，切换开关不会恢复同一次提醒。Android 16+ 请求标准 Live Updates，不支持或未获系统许可时使用普通持续计时通知。秒数由系统 Chronometer 绘制；有界 `specialUse` 前台服务仅在提醒窗口内管理状态切换，结束后释放唤醒锁并停止。闹钟、开机解锁、时钟变化、缓存刷新及账号变化会重新核对任务，持久化记录只包含散列标识和截止时间，位于不参与备份的目录。强行停止、未授予精确提醒权限以及系统/厂商后台限制仍可能造成延迟；实时通知呈现在哪些系统区域由手机决定。
+
+`CourseReminderRulesTest`、`CourseReminderJournalTest` 和 `ScheduleViewModelTest` 覆盖计时边界、教学周、校区、去重、取消、设置及账号变化、冷启动闹钟时序和课程详情跳转。`NotificationSettingsUiTest` 验证深浅色设置界面和独立偏好存储，`CourseNotificationTest` 验证真实 Android 通知模板的倒计时/正计时、自动清理时限与提升条件，不实际发送通知或修改课表。`TimetableNavigationTest` 还验证通知设置入口和返回导航，该用例在通知权限未授权时跳过以避免无人值守操作系统权限弹窗。
+
+```sh
+adb shell am instrument -w \
+  -e class moe.nepnep.hduhelper.NotificationSettingsUiTest,moe.nepnep.hduhelper.CourseNotificationTest,moe.nepnep.hduhelper.TimetableNavigationTest \
+  moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+`CourseReminderDeviceTest` 通过 `-e courseReminders true` 单独启用，要求通知和精确闹钟权限已开启、当前账号已有当前学期缓存，且测试窗口内没有真实课程提醒。它在缓存中加入带唯一标识的短时测试课程，等待真实闹钟、倒计时/正计时切换及 60 秒清理，验证关闭本次提醒，并用已有课程检查冷/热启动详情跳转；结束时只移除测试课程、校区和临时周次，恢复原通知设置。运行期间不要刷新课表或切换账号，避免替换测试缓存。测试不自行授予权限。测试变更前会保存恢复记录；若进程被中断导致清理未完成，可解锁手机后以 `-e courseReminderRecovery true` 运行同类的 `restoreAnInterruptedDeviceTest` 方法恢复，恢复过程只删除记录中的测试对象。可在计时阶段熄屏验证锁屏后台行为，再分别检查系统允许与关闭实时通知时的显示；模板和规则测试不能替代这些真机验证。
+
 真实学校服务测试默认跳过，必须手动选择并先安装 Debug 和测试 APK：
 
 ```sh

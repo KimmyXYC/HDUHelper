@@ -26,10 +26,14 @@ class ScheduleViewModelTest {
     }
     private class Source : TimetableSource {
         var cache: TimetableData? = data(meeting("a"))
+        var cacheGate: CompletableDeferred<Unit>? = null
         var catalogGate: CompletableDeferred<Unit>? = null
         var fetchGate: CompletableDeferred<Unit>? = null
         var requested: AcademicTerm? = null
-        override suspend fun cached(account: String, term: AcademicTerm?) = cache?.takeIf { it.account == account && (term == null || it.term.key == term.key) }
+        override suspend fun cached(account: String, term: AcademicTerm?): TimetableData? {
+            cacheGate?.await()
+            return cache?.takeIf { it.account == account && (term == null || it.term.key == term.key) }
+        }
         override suspend fun catalog(): TimetableCatalog { catalogGate?.await(); return catalog }
         override suspend fun refresh(term: AcademicTerm, catalog: TimetableCatalog): TimetableData {
             requested = term; fetchGate?.await(); return data(meeting("fresh"))
@@ -84,4 +88,65 @@ class ScheduleViewModelTest {
             assertNull(model.state.value.detail); assertNotNull(model.state.value.error)
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
+    @Test fun courseNotificationWaitsForColdSessionThenOpensCachedCourseOffline() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val owner = ViewModelStore()
+        try {
+            val auth = MutableStateFlow(AuthState(AuthStatus.LOADING))
+            val generation = MutableStateFlow(1L)
+            val model = ScheduleViewModel(ScheduleRepository(Store(ScheduleBook()), StandardTestDispatcher(testScheduler)), Source(), auth,
+                generation, MutableStateFlow(false), Reminders(), { LocalDateTime.parse("2026-09-14T09:00") })
+            owner.put("schedule", model)
+            val key = moe.nepnep.hduhelper.data.notifications.CourseReminderRules.hash("student")
+            val date = LocalDate.of(2026, 9, 14)
+            model.openCourseNotification(key, term.key, "a", date); runCurrent()
+            assertNull(model.state.value.courseDetailId)
+            auth.value = AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试")); runCurrent()
+            assertEquals("a", model.state.value.courseDetailId)
+            assertEquals(date, model.state.value.date)
+            assertNull(model.state.value.error)
+            model.showDetail(null)
+            assertNull(model.state.value.courseDetailId)
+            model.openCourseNotification(key, term.key, "a", date); runCurrent()
+            assertEquals("a", model.state.value.courseDetailId)
+            auth.value = AuthState(AuthStatus.SIGNED_OUT); runCurrent()
+            assertNull(model.state.value.courseDetailId)
+        } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun courseNotificationRejectsOtherAccountsAndDeletedOrOldTermCourses() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val owner = ViewModelStore()
+        try {
+            val model = ScheduleViewModel(ScheduleRepository(Store(ScheduleBook()), StandardTestDispatcher(testScheduler)), Source(),
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(false), Reminders(), { LocalDateTime.parse("2026-09-14T09:00") })
+            owner.put("schedule", model); runCurrent()
+            val key = moe.nepnep.hduhelper.data.notifications.CourseReminderRules.hash("student")
+            for ((account, termKey, id) in listOf(Triple("other", term.key, "a"), Triple(key, "2025-3", "a"), Triple(key, term.key, "deleted"))) {
+                model.openCourseNotification(account, termKey, id, LocalDate.of(2026, 9, 14)); runCurrent()
+                assertNull(model.state.value.courseDetailId)
+                assertNotNull(model.state.value.error)
+            }
+        } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun aNewCourseNotificationReplacesPendingNavigation() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val owner = ViewModelStore()
+        try {
+            val source = Source().apply { cache = data(meeting("a"), meeting("b")); cacheGate = CompletableDeferred() }
+            val model = ScheduleViewModel(ScheduleRepository(Store(ScheduleBook()), StandardTestDispatcher(testScheduler)), source,
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(false), Reminders(), { LocalDateTime.parse("2026-09-14T09:00") })
+            owner.put("schedule", model); runCurrent()
+            val key = moe.nepnep.hduhelper.data.notifications.CourseReminderRules.hash("student")
+            val date = LocalDate.of(2026, 9, 14)
+            model.openCourseNotification(key, term.key, "a", date); runCurrent()
+            model.openCourseNotification(key, term.key, "b", date); runCurrent()
+            source.cacheGate!!.complete(Unit); runCurrent()
+            assertEquals("b", model.state.value.courseDetailId)
+        } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
 }

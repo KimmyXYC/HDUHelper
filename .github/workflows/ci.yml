@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Resolve CI version
+        id: version
+        run: echo "name=$(python3 tools/build-version.py ci)" >> "$GITHUB_OUTPUT"
+      - name: Test and build
+        env:
+          CI_VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          python3 tools/test-build-version.py
+          ./gradlew --no-daemon -PciVersionName="$CI_VERSION" :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/HDUHelper-$CI_VERSION.apk"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: HDUHelper-${{ steps.version.outputs.name }}
+          path: dist/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          retention-days: 14

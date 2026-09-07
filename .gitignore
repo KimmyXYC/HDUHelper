@@ -20,3 +20,11 @@ local.properties
 *.jks
 *.keystore
 *.hprof
+
+*.p12
+*.pfx
+/signing/
+/keystore.properties
+*.password
+/dist/
+__pycache__/

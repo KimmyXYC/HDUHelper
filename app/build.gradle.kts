@@ -15,7 +15,7 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -23,7 +23,7 @@ android {
     buildTypes {
         release {
             optimization {
-                enable = false
+                enable = true
             }
         }
     }
@@ -34,6 +34,17 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        providers.gradleProperty("ciVersionName").orNull?.let { ciVersion ->
+            require(Regex("v[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9a-f]{7}").matches(ciVersion)) {
+                "ciVersionName must be vMAJOR.MINOR.PATCH.COMMIT (7 lowercase hex characters)"
+            }
+            variant.outputs.forEach { it.versionName.set(ciVersion) }
+        }
     }
 }
 

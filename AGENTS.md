@@ -30,7 +30,7 @@ Follow Kotlin official style with four-space indentation. Use PascalCase for typ
 
 ## Testing Guidelines
 
-Use JUnit 4, MockWebServer, and coroutine test utilities for unit tests; AndroidX JUnit, Compose testing, and Espresso for device tests. Name classes `*Test` and methods after the behavior tested. No coverage threshold is configured; add regression tests for authentication, storage, and UI behavior changes. Simulate credential failures rather than risking real-account lockouts. Live authentication is opt-in via `python3 tools/live-auth-smoke.py --serial DEVICE_SERIAL`; consult `README.md` for WebView checks.
+Use JUnit 4, MockWebServer, and coroutine test utilities for unit tests; AndroidX JUnit, Compose testing, and Espresso for device tests. Name classes `*Test` and methods after the behavior tested. No coverage threshold is configured; add regression tests for authentication, storage, and UI behavior changes. Simulate credential failures rather than risking real-account lockouts. Live authentication is opt-in via `python3 tools/live-auth-smoke.py --serial DEVICE_SERIAL`; consult `docs/development.md` for WebView checks and signing/release commands.
 
 ## Commit & Pull Request Guidelines
 

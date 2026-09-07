@@ -87,12 +87,13 @@ class BackgroundDeviceTest {
             }
         }
         fun exemptions() = BackgroundWire.status(requireNotNull(BackgroundHostConnection.binder.value)).getLong("exemptions")
-        fun schedule(intent: PendingIntent) = alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 60_000, intent)
+        fun schedule(intent: PendingIntent) = alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 2_000, intent)
         try {
             val disabled = switch(false)
             assertNotEquals(PermissionState.UNKNOWN, disabled.autostart)
             val before = exemptions()
             pending.forEach(::schedule)
+            delay(3000)
             assertEquals(before, exemptions())
             pending.forEach(alarms::cancel)
             val active = switch(true)
@@ -105,11 +106,13 @@ class BackgroundDeviceTest {
             // is covered independently by BackgroundStatusTest without touching the user's alarms.
             val beforeOwn = exemptions()
             pending.take(2).forEach(::schedule)
-            assertTrue("Own alarm hooks must actually execute", exemptions() > beforeOwn)
+            // Some ROM policy hooks run at delivery, not during scheduling.
+            withTimeout(10_000) { while (exemptions() <= beforeOwn) delay(100) }
             pending.forEach(alarms::cancel)
             switch(false)
             val off = exemptions()
             pending.forEach(::schedule)
+            delay(3000)
             assertEquals(off, exemptions())
         } finally {
             pending.forEach { alarms.cancel(it); it.cancel() }

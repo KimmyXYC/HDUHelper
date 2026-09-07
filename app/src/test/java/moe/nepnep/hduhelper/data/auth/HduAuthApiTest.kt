@@ -95,6 +95,14 @@ class HduAuthApiTest {
         expectSuspendFailure(AuthFailure.PROTOCOL) { api.create(emptyList()).authorizeService(endpoints.campusCodeService) }
     }
 
+    @Test fun academicGrantUsesRegisteredHttpServiceWithoutSendingTicketOverHttp() = runBlocking {
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", "${endpoints.timetableService}?ticket=synthetic-jw").build())
+        assertEquals("synthetic-jw", api.create(emptyList()).authorizeService(endpoints.timetableService))
+        val request = server.takeRequest()
+        assertTrue(URLDecoder.decode(request.target, "UTF-8").contains("service=http://newjw.hdu.edu.cn/sso/driot4login"))
+        assertEquals(1, server.requestCount)
+    }
+
     @Test fun successfulJsonRequiresAccountAndExplicitResult() {
         assertEquals("student01", HduAuthApi.parseProfile(profileJson).account)
         for (body in listOf("""{"result":1,"data":{}}""", """{"data":{"loginName":"x"}}""", """{"result":{},"data":{}}""", "<html>server error</html>")) {

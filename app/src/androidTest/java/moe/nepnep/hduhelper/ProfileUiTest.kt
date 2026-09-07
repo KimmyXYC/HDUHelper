@@ -21,7 +21,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import moe.nepnep.hduhelper.data.auth.AuthState
 import moe.nepnep.hduhelper.data.auth.AuthStatus
@@ -112,7 +111,9 @@ class ProfileUiTest {
         compose.onNodeWithTag("logout_confirmation").assertDoesNotExist()
     }
 
-    @Test fun backDismissesLogoutWithoutSigningOut() = verifyLogoutDismissal { pressBack() }
+    @Test fun backDismissesLogoutWithoutSigningOut() = verifyLogoutDismissal {
+        assertTrue(InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK))
+    }
 
     @Test fun outsideTapDismissesLogoutWithoutSigningOut() = verifyLogoutDismissal {
         compose.onNode(isDialog()).performTouchInput { click(Offset(center.x, height * 0.1f)) }

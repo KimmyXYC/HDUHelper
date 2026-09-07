@@ -20,5 +20,9 @@ class AppContainer(application: Application) {
     val settings = SettingsRepository(application)
     val auth = AuthRepository(androidSessionStore(application), settings, HduAuthApi())
     val campusCodes = moe.nepnep.hduhelper.data.campuscode.CampusCodeRepository(auth)
-    init { auth.onSessionInvalidated(campusCodes::clear) }
+    val timetables = moe.nepnep.hduhelper.data.timetable.TimetableRepository(auth, moe.nepnep.hduhelper.data.timetable.androidTimetableStore(application))
+    init {
+        auth.onSessionInvalidated(campusCodes::clear)
+        auth.onSessionInvalidated(timetables::clear)
+    }
 }

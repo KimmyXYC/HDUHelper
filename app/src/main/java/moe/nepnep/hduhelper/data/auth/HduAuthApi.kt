@@ -33,6 +33,7 @@ class AuthEndpoints(
     val portal: HttpUrl = "https://i.hdu.edu.cn/".toHttpUrl(),
     val sso: HttpUrl = "https://sso.hdu.edu.cn/".toHttpUrl(),
     val campusCodeService: HttpUrl = "https://ymt.hdu.edu.cn/uias-h5/login".toHttpUrl(),
+    val timetableService: HttpUrl = "http://newjw.hdu.edu.cn/sso/driot4login".toHttpUrl(),
 ) {
     val login: HttpUrl = sso.resolve("login")!!.newBuilder()
         .addQueryParameter("service", portal.resolve("sopcb/").toString()).build()
@@ -171,7 +172,7 @@ class HduAuthApi(private val endpoints: AuthEndpoints = AuthEndpoints()) : AuthS
         }
 
         override suspend fun authorizeService(service: HttpUrl): String {
-            if (service != endpoints.campusCodeService) throw AuthException(AuthFailure.PROTOCOL, "不支持的学校服务")
+            if (service != endpoints.campusCodeService && service != endpoints.timetableService) throw AuthException(AuthFailure.PROTOCOL, "不支持的学校服务")
             val url = endpoints.sso.resolve("login")!!.newBuilder().addQueryParameter("service", service.toString()).build()
             val reply = request(Request.Builder().url(url).build(), allowSso = true, serviceCallback = service)
             val ticket = reply.url.queryParameter("ticket")

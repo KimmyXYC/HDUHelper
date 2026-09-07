@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val model: AppViewModel = viewModel(factory = AppViewModel.factory(container))
             val campusModel: moe.nepnep.hduhelper.ui.CampusCodeViewModel = viewModel(factory = moe.nepnep.hduhelper.ui.CampusCodeViewModel.factory(container))
+            val timetableModel: moe.nepnep.hduhelper.ui.TimetableViewModel = viewModel(factory = moe.nepnep.hduhelper.ui.TimetableViewModel.factory(container))
             val settings by model.settings.collectAsStateWithLifecycle()
             val dark = when (settings.theme) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -35,7 +36,7 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
                 )
             }
-            HDUHelperTheme(darkTheme = dark) { HDUHelperApp(model, campusModel) }
+            HDUHelperTheme(darkTheme = dark) { HDUHelperApp(model, campusModel, timetableModel) }
         }
     }
 }

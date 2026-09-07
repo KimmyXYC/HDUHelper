@@ -43,6 +43,8 @@ import moe.nepnep.hduhelper.ui.screens.LoginScreen
 import moe.nepnep.hduhelper.ui.screens.ProfileScreen
 import moe.nepnep.hduhelper.ui.screens.ScheduleScreen
 import moe.nepnep.hduhelper.ui.screens.TimetableScreen
+import moe.nepnep.hduhelper.ui.screens.TimetableTopBar
+import moe.nepnep.hduhelper.ui.screens.TimetableSettingsScreen
 import moe.nepnep.hduhelper.ui.screens.VerificationCookies
 import moe.nepnep.hduhelper.ui.screens.VerificationScreen
 import top.yukonga.miuix.kmp.basic.Icon
@@ -55,7 +57,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 
 @Composable
-fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier: Modifier = Modifier) {
+fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, timetableModel: TimetableViewModel, modifier: Modifier = Modifier) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "main"
@@ -65,6 +67,7 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
     val verificationError by model.verificationError.collectAsStateWithLifecycle()
     val actionError by model.actionError.collectAsStateWithLifecycle()
     val campusState by campusModel.state.collectAsStateWithLifecycle()
+    val timetableState by timetableModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -80,6 +83,10 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
     LifecycleStartEffect(route, destination) {
         campusModel.setVisible(route == "main" && destination == AppDestination.CAMPUS_CODE)
         onStopOrDispose { campusModel.setVisible(false) }
+    }
+    LifecycleStartEffect(route, destination) {
+        timetableModel.setVisible(route == "main" && destination == AppDestination.TIMETABLE)
+        onStopOrDispose { timetableModel.setVisible(false) }
     }
     moe.nepnep.hduhelper.ui.components.CampusCodeBrightness(route == "main" && destination == AppDestination.CAMPUS_CODE)
     DisposableEffect(sensitive, activity) {
@@ -122,7 +129,10 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
     ) {
         composable("main") {
             Scaffold(
-                topBar = { TopAppBar(title = stringResource(destination.labelRes)) },
+                topBar = {
+                    if (destination == AppDestination.TIMETABLE) TimetableTopBar(timetableState, timetableModel::goToDefaultWeek, timetableModel::selectTerm)
+                    else TopAppBar(title = stringResource(destination.labelRes))
+                },
                 bottomBar = {
                     NavigationBar {
                         AppDestination.entries.forEach { item ->
@@ -148,7 +158,9 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
                     pageStateHolder.SaveableStateProvider(page.name) {
                         when (page) {
                             AppDestination.SCHEDULE -> ScheduleScreen(Modifier.fillMaxSize())
-                            AppDestination.TIMETABLE -> TimetableScreen(Modifier.fillMaxSize())
+                            AppDestination.TIMETABLE -> TimetableScreen(timetableState, timetableModel::refresh, timetableModel::selectWeek,
+                                onLogin = { loginReturnDestination = AppDestination.TIMETABLE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
+                                onVerify = { loginReturnDestination = AppDestination.TIMETABLE; model.openVerification() }, modifier = Modifier.fillMaxSize())
                             AppDestination.CAMPUS_CODE -> CampusCodeScreen(campusState, { campusModel.refresh() },
                                 onLogin = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onVerify = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openVerification() }, modifier = Modifier.fillMaxSize())
@@ -157,6 +169,7 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
                                 auth,
                                 onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
                                 onAppearance = { nav.navigate("appearance") { launchSingleTop = true } },
+                                onTimetableSettings = { nav.navigate("timetable_settings") { launchSingleTop = true } },
                                 onLogout = model::logout,
                                 onAbout = { nav.navigate("about") { launchSingleTop = true } },
                                 onVerify = { loginReturnDestination = AppDestination.PROFILE; model.openVerification() },
@@ -179,6 +192,9 @@ fun HDUHelperApp(model: AppViewModel, campusModel: CampusCodeViewModel, modifier
         }
         composable("appearance") {
             SecondaryPage("外观设置", back) { AppearanceScreen(settings.theme, model::setTheme, it) }
+        }
+        composable("timetable_settings") {
+            SecondaryPage("课表设置", back) { TimetableSettingsScreen(timetableState, timetableModel::setSettings, timetableModel::setCampus, it) }
         }
         composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it) } }
     }

@@ -91,6 +91,16 @@ fun HDUHelperApp(
         factory = NotificationSettingsViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
     val notificationStatus by notificationModel.status.collectAsStateWithLifecycle()
     val backgroundStatus by notificationModel.background.collectAsStateWithLifecycle()
+    val updateModel: UpdateViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = UpdateViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
+    val updateState by updateModel.state.collectAsStateWithLifecycle()
+    val updateUriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    moe.nepnep.hduhelper.ui.components.UpdateDialog(updateState, updateModel::dismiss) { url ->
+        try { updateUriHandler.openUri(url); updateModel.dismiss() }
+        catch (_: android.content.ActivityNotFoundException) { updateModel.browserFailed() }
+        catch (_: IllegalArgumentException) { updateModel.browserFailed() }
+        catch (_: SecurityException) { updateModel.browserFailed() }
+    }
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
@@ -100,10 +110,11 @@ fun HDUHelperApp(
     val sensitive = route == "login" || route == "verification"
 
     LifecycleStartEffect(Unit) {
+        updateModel.setForeground(true)
         model.onForeground()
         notificationModel.foreground()
         scheduleModel.foreground()
-        onStopOrDispose { model.onBackground() }
+        onStopOrDispose { model.onBackground(); updateModel.setForeground(false) }
     }
     LifecycleStartEffect(route, destination) {
         campusModel.setVisible(route == "main" && destination == AppDestination.CAMPUS_CODE)
@@ -311,7 +322,7 @@ fun HDUHelperApp(
                     })
             }
         }
-        composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it) } }
+        composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it, updateState, updateModel::check) } }
     }
 }
 

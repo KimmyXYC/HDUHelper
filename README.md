@@ -24,6 +24,8 @@ HyperOS 3 用户可在 LSPosed（现代 API 101）启用杭电助手模块，勾
 
 前往 [最新正式版](https://github.com/KimmyXYC/HDUHelper/releases/latest)，下载附件中的 `HDUHelper-v版本号.apk`，在手机上打开并按系统提示允许安装。`SHA256SUMS` 可用于校验下载文件。
 
+应用进入前台且联网时，每 24 小时最多自动检查一次正式版更新，也可在“我的 → 关于应用 → 检查更新”手动检查。发现新版后可查看更新说明，并通过浏览器前往对应 GitHub Release 页面下载 APK。
+
 正式版与 CI 测试包使用同一固定签名；versionCode 相同或更高时可以覆盖安装并保留本地数据。CI 测试包位于 [GitHub Actions](https://github.com/KimmyXYC/HDUHelper/actions/workflows/ci.yml)，版本名形如 `v1.0.0.abcdefg`，末尾为源码提交 ID。
 
 ## 使用方法

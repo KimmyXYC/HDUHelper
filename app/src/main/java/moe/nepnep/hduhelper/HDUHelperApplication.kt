@@ -18,6 +18,8 @@ class HDUHelperApplication : Application() {
 }
 
 class AppContainer(application: Application) {
+    val updates = moe.nepnep.hduhelper.data.update.UpdateRepository()
+    val updateCheckStore = moe.nepnep.hduhelper.data.update.AndroidUpdateCheckStore(application)
     val network = moe.nepnep.hduhelper.data.network.NetworkMonitor(application)
     val settings = SettingsRepository(application)
     val auth = AuthRepository(androidSessionStore(application), settings, HduAuthApi())

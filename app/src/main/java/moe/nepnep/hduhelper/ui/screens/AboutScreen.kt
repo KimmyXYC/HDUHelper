@@ -21,7 +21,11 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun AboutScreen(modifier: Modifier = Modifier) {
+fun AboutScreen(
+    modifier: Modifier = Modifier,
+    updateState: moe.nepnep.hduhelper.ui.UpdateState = moe.nepnep.hduhelper.ui.UpdateState(),
+    onCheckUpdate: () -> Unit = {},
+) {
     val uriHandler = LocalUriHandler.current
     Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(28.dp)) {
@@ -33,6 +37,12 @@ fun AboutScreen(modifier: Modifier = Modifier) {
             }
         }
         Card(Modifier.fillMaxWidth()) {
+            ArrowPreference(
+                title = "检查更新",
+                summary = if (updateState.checking) "正在检查更新…" else updateState.message,
+                onClick = onCheckUpdate,
+                modifier = Modifier.testTag("check_update"),
+            )
             ArrowPreference(title = "项目地址", summary = "本项目基于 AGPL-3.0 协议开源",
                 onClick = { uriHandler.openUri("https://github.com/KimmyXYC/HDUHelper") },
                 modifier = Modifier.testTag("about_project"))

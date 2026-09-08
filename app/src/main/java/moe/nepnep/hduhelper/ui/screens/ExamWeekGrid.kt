@@ -16,7 +16,7 @@ fun ExamWeekGrid(data: TimetableData, week: Int, settings: TimetableSettings, cl
     val items = remember(data, week, settings) { ExamGridRules.items(data, week, settings) }
     val axis = remember(clock, items) { ExamGridRules.axis(clock, items) }
     val fragments = remember(items, axis) { ExamGridRules.fragments(items, axis) }
-    val days = if (settings.showWeekend) 7 else 5
+    val days = settings.visibleDays
     val rows = axis.periods.associate { it.section to axis.position(ExamGridRules.minutes(it.start)!!).dp }
     val breaks = axis.periods.zipWithNext().mapNotNull { (previous, next) ->
         if (previous.group.isNotBlank() && next.group.isNotBlank() && previous.group != next.group) {
@@ -27,7 +27,7 @@ fun ExamWeekGrid(data: TimetableData, week: Int, settings: TimetableSettings, cl
     val labels = if (axis.periods.isEmpty()) axis.points.map { (minute, top) ->
         top.dp to "%02d:%02d".format(minute / 60, minute % 60)
     } else emptyList()
-    TimetableGridFrame(days, height, rows, axis.periods.associateBy { it.section }, breaks,
+    TimetableGridFrame(days.size, height, rows, axis.periods.associateBy { it.section }, breaks,
         Modifier.testTag("timetable_grid_$week"), timeLabels = labels) { column ->
         for (item in items) for ((top, bottom) in fragments[item.key].orEmpty()) {
             val height = bottom - top
@@ -38,7 +38,7 @@ fun ExamWeekGrid(data: TimetableData, week: Int, settings: TimetableSettings, cl
                 item.course?.courseKey ?: data.meetings.firstOrNull { it.name == exam?.name }?.courseKey ?: exam!!.name,
                 exam?.location ?: item.course?.location.orEmpty(), item.course?.teacher.orEmpty(),
                 exam != null || item.state == MeetingState.CURRENT, dark, settings,
-                Modifier.offset(x = 36.dp + column * (item.weekday - 1), y = top.dp)
+                Modifier.offset(x = 36.dp + column * days.indexOf(item.weekday), y = top.dp)
                     .width(column).height(height.dp).padding(2.dp).testTag("grid_${item.key}"), conflicts.size,
                 badge = if (exam != null) "考试" else null,
                 time = exam?.let { "${it.startTime!!.toLocalTime()}–${it.endTime!!.toLocalTime()}" },

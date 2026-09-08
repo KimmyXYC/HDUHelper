@@ -33,7 +33,9 @@ class SettingsRepository(context: Context) : AuthSettings {
             autoLogin = preferences.getBoolean("auto_login", true),
             timetable = TimetableSettings(
                 preferences.getBoolean("tt_other", true), preferences.getBoolean("tt_finished", false),
-                preferences.getBoolean("tt_weekend", false), preferences.getBoolean("tt_teacher", true), preferences.getBoolean("tt_location", true), preferences.getBoolean("tt_exams", true),
+                preferences.getBoolean("tt_saturday", preferences.getBoolean("tt_weekend", false)),
+                preferences.getBoolean("tt_sunday", preferences.getBoolean("tt_weekend", false)),
+                preferences.getBoolean("tt_teacher", true), preferences.getBoolean("tt_location", true), preferences.getBoolean("tt_exams", true),
             ),
         ),
     )
@@ -65,7 +67,7 @@ class SettingsRepository(context: Context) : AuthSettings {
     fun setTimetable(value: TimetableSettings) {
         preferences.edit {
             putBoolean("tt_other", value.showOtherWeeks); putBoolean("tt_finished", value.showFinished)
-            putBoolean("tt_weekend", value.showWeekend); putBoolean("tt_teacher", value.showTeacher); putBoolean("tt_location", value.showLocation)
+            putBoolean("tt_saturday", value.showSaturday); putBoolean("tt_sunday", value.showSunday); remove("tt_weekend"); putBoolean("tt_teacher", value.showTeacher); putBoolean("tt_location", value.showLocation)
             putBoolean("tt_exams", value.showExams)
         }
         mutableState.value = mutableState.value.copy(timetable = value)

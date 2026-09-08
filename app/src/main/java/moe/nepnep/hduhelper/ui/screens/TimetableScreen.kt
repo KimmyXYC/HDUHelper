@@ -152,8 +152,10 @@ fun TimetableScreen(
                         val week = weeks[index]
                         Column(Modifier.fillMaxSize()) {
                             val weekExams = if (state.settings.showExams) ExamRules.week(data, week) else emptyList()
-                            val settings = state.settings.copy(showWeekend = state.settings.showWeekend || weekExams.any { it.startTime!!.dayOfWeek.value > 5 })
-                            DateHeader(data, week, state.today, settings.showWeekend, settings.showExams)
+                            val settings = state.settings.copy(
+                                showSaturday = state.settings.showSaturday || weekExams.any { it.startTime!!.dayOfWeek.value == 6 },
+                                showSunday = state.settings.showSunday || weekExams.any { it.startTime!!.dayOfWeek.value == 7 })
+                            DateHeader(data, week, state.today, settings.visibleDays, settings.showExams)
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).testTag("timetable_scroll_$week")) {
                                 if (weekExams.isNotEmpty()) ExamWeekGrid(data, week, settings, state.clock) { items ->
                                     if (items.size == 1) openItem(items.single()) else conflicts = items
@@ -225,11 +227,12 @@ fun TimetableScreen(
 }
 
 @Composable
-private fun DateHeader(data: TimetableData, week: Int, today: LocalDate, weekend: Boolean, showExams: Boolean) {
+private fun DateHeader(data: TimetableData, week: Int, today: LocalDate, days: List<Int>, showExams: Boolean) {
     val monday = ExamRules.weeks(data, showExams).firstOrNull { it.week == week }?.startDate?.with(java.time.temporal.TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY)) ?: today.with(DayOfWeek.MONDAY)
     Row(Modifier.fillMaxWidth().height(48.dp)) {
         Spacer(Modifier.width(36.dp))
-        repeat(if (weekend) 7 else 5) { day ->
+        for (weekday in days) {
+            val day = weekday - 1
             val date = monday.plusDays(day.toLong())
             val tint = if (date == today) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary
             Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -262,8 +265,8 @@ private fun WeekGrid(data: TimetableData, week: Int, settings: TimetableSettings
         height += rowHeight
     }
     val dark = MiuixTheme.colorScheme.surface.luminance() < .4f
-    val days = if (settings.showWeekend) 7 else 5
-    TimetableGridFrame(days, height, rows, periods, breaks, Modifier.testTag("timetable_grid_$week")) { columnWidth ->
+    val days = settings.visibleDays
+    TimetableGridFrame(days.size, height, rows, periods, breaks, Modifier.testTag("timetable_grid_$week")) { columnWidth ->
         for (card in cards) {
             // Visible fragments retain the original card's time positions after higher-priority cards cover it.
             val fragments = mutableListOf<IntRange>()
@@ -276,7 +279,7 @@ private fun WeekGrid(data: TimetableData, week: Int, settings: TimetableSettings
             for (run in fragments) {
                 val top = rows.getValue(run.first)
                 val bottom = rows.getValue(run.last) + rowHeight
-                CourseCard(card, dark, settings, Modifier.offset(x = 36.dp + columnWidth * (card.meeting.weekday - 1), y = top)
+                CourseCard(card, dark, settings, Modifier.offset(x = 36.dp + columnWidth * days.indexOf(card.meeting.weekday), y = top)
                     .width(columnWidth).height(bottom - top).padding(2.dp).testTag("course_${card.meeting.id}_${run.first}")) { onClick(card) }
             }
         }

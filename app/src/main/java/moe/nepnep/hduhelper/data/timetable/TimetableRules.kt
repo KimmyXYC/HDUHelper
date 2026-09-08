@@ -39,7 +39,7 @@ object TimetableRules {
                 if (m.weeks.any { it >= week && abs(it - week) == distance }) 0 else 1
             }.thenBy { it.id }
         return data.meetings.filter { m ->
-            (settings.showWeekend || m.weekday <= 5) && when (state(m)) {
+            (m.weekday in settings.visibleDays) && when (state(m)) {
                 MeetingState.CURRENT -> true
                 MeetingState.OTHER_WEEK -> settings.showOtherWeeks
                 MeetingState.FINISHED -> settings.showFinished

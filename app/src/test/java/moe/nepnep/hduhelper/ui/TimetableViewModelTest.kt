@@ -119,9 +119,9 @@ class TimetableViewModelTest {
             val model=TimetableViewModel(source,MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED,UserProfile("student","测试"))),MutableStateFlow(1L),MutableStateFlow(true),prefs,
                 {a,t->campuses["$a/$t"]},{prefs.value=prefs.value.copy(timetable=it)},{a,t,c->campuses["$a/$t"]=c;prefs.value=prefs.value.copy(campusRevision=prefs.value.campusRevision+1)},today={LocalDate.of(2026,9,21)})
             store.put("test",model);model.setVisible(true);runCurrent();model.selectWeek(5)
-            model.setSettings(TimetableSettings(showWeekend=true,showTeacher=false));model.setCampus("2");runCurrent()
+            model.setSettings(TimetableSettings(showSaturday=true,showSunday=true,showTeacher=false));model.setCampus("2");runCurrent()
             assertEquals(5,model.state.value.week);assertEquals(1,source.calls)
-            assertTrue(model.state.value.settings.showWeekend);assertFalse(model.state.value.settings.showTeacher)
+            assertTrue(model.state.value.settings.showSaturday);assertFalse(model.state.value.settings.showTeacher)
             assertEquals("2",model.state.value.clock!!.id)
         }finally{store.clear();Dispatchers.resetMain()}
     }

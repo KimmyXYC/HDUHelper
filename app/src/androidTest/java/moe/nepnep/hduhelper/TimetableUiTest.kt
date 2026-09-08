@@ -61,7 +61,7 @@ class TimetableUiTest {
     }
 
     @Test fun termPickerWeekendAndFullDayScrollInLightTheme() {
-        var state by mutableStateOf(initial(1).copy(settings=TimetableSettings(showWeekend=true)))
+        var state by mutableStateOf(initial(1).copy(settings=TimetableSettings(showSaturday=true,showSunday=true)))
         compose.setContent {HDUHelperTheme(darkTheme=false) {Scaffold(topBar={TimetableTopBar(state, {}, {state=state.copy(selectedTerm=it)})}) {padding->
             TimetableScreen(state,{}, {state=state.copy(week=it)}, {}, {},Modifier.fillMaxSize().padding(padding))
         }}}
@@ -83,8 +83,8 @@ class TimetableUiTest {
         var state by mutableStateOf(initial())
         compose.setContent {HDUHelperTheme {Scaffold {padding->TimetableSettingsScreen(state,{state=state.copy(settings=it)},{state=state.copy(selectedCampus=it)},Modifier.fillMaxSize().padding(padding))}}}
         compose.onNodeWithText(state.data!!.term.label).assertIsDisplayed()
-        for(tag in listOf("setting_other_weeks","setting_finished","setting_exams","setting_weekend","setting_teacher","setting_location"))compose.onNodeWithTag(tag).performScrollTo().performClick()
-        compose.runOnIdle {assertEquals(TimetableSettings(false,true,true,false,false,false),state.settings)}
+        for(tag in listOf("setting_other_weeks","setting_finished","setting_exams","setting_saturday","setting_sunday","setting_teacher","setting_location"))compose.onNodeWithTag(tag).performScrollTo().performClick()
+        compose.runOnIdle {assertEquals(TimetableSettings(showOtherWeeks=false,showFinished=true,showSaturday=true,showSunday=true,showTeacher=false,showLocation=false,showExams=false),state.settings)}
         compose.onNodeWithTag("campus_2").performScrollTo().performClick()
         compose.runOnIdle {assertEquals("2",state.selectedCampus)}
         compose.onNodeWithTag("campus_auto").performScrollTo().performClick()
@@ -111,15 +111,48 @@ class TimetableUiTest {
         compose.runOnIdle { assertEquals(1, refreshes) }
     }
 
+    @Test fun saturdayAndSundayHeadersToggleIndependently() {
+        var state by mutableStateOf(initial(1).copy(settings=TimetableSettings(showSunday=true)))
+        compose.setContent { HDUHelperTheme { Scaffold { padding ->
+            TimetableScreen(state, {}, {}, {}, {}, Modifier.fillMaxSize().padding(padding))
+        } } }
+        compose.onNodeWithText("周日").assertIsDisplayed()
+        compose.onNodeWithText("周六").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(settings=TimetableSettings(showSaturday=true)) }
+        compose.onNodeWithText("周六").assertIsDisplayed()
+        compose.onNodeWithText("周日").assertDoesNotExist()
+    }
+
+    @Test fun legacyWeekendPreferenceMigratesAndIndependentValuesPersist() {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "weekend-migration-test"
+        val context = object : android.content.ContextWrapper(base) {
+            override fun getSharedPreferences(ignored: String, mode: Int) = base.getSharedPreferences(name, mode)
+        }
+        val prefs = context.getSharedPreferences("settings", 0)
+        try {
+            for (legacy in listOf(false, true)) {
+                prefs.edit().clear().putBoolean("tt_weekend", legacy).commit()
+                val repo = SettingsRepository(context)
+                assertEquals(legacy, repo.state.value.timetable.showSaturday)
+                assertEquals(legacy, repo.state.value.timetable.showSunday)
+                repo.setTimetable(repo.state.value.timetable.copy(showSaturday=false, showSunday=true))
+                val reopened = SettingsRepository(context).state.value.timetable
+                assertFalse(reopened.showSaturday); assertTrue(reopened.showSunday)
+                assertFalse(prefs.contains("tt_weekend"))
+            }
+        } finally { prefs.edit().clear().commit() }
+    }
+
     @Test fun settingsPersistAndCampusChoicesAreScoped() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val repository=SettingsRepository(context)
         val original=repository.state.value.timetable
         try {
-            repository.setTimetable(TimetableSettings(false,true,true,false,false,false))
+            repository.setTimetable(TimetableSettings(showOtherWeeks=false,showFinished=true,showSaturday=true,showSunday=true,showTeacher=false,showLocation=false,showExams=false))
             repository.setTimetableCampus("synthetic-settings","2026-3","2")
             val reopened=SettingsRepository(context)
-            assertEquals(TimetableSettings(false,true,true,false,false,false),reopened.state.value.timetable)
+            assertEquals(TimetableSettings(showOtherWeeks=false,showFinished=true,showSaturday=true,showSunday=true,showTeacher=false,showLocation=false,showExams=false),reopened.state.value.timetable)
             assertEquals("2",reopened.timetableCampus("synthetic-settings","2026-3"))
             assertNull(reopened.timetableCampus("another-synthetic","2026-3"))
             assertNull(reopened.timetableCampus("synthetic-settings","2025-12"))

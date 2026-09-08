@@ -66,11 +66,14 @@ data class TimetableData(
 data class TimetableSettings(
     val showOtherWeeks: Boolean = true,
     val showFinished: Boolean = false,
-    val showWeekend: Boolean = false,
+    val showSaturday: Boolean = false,
+    val showSunday: Boolean = false,
     val showTeacher: Boolean = true,
     val showLocation: Boolean = true,
     val showExams: Boolean = true,
-)
+) {
+    val visibleDays: List<Int> get() = (1..5).toList() + listOfNotNull(6.takeIf { showSaturday }, 7.takeIf { showSunday })
+}
 
 enum class TimetableFailure { AUTHORIZATION, PERMISSION, CLOSED, PROTOCOL, NETWORK, SERVICE }
 class TimetableException(val kind: TimetableFailure, override val message: String) : Exception(message)

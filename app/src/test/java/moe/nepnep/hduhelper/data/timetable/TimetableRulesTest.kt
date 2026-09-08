@@ -39,12 +39,22 @@ class TimetableRulesTest {
         assertEquals(listOf(3,4,5), visible["A"])
         assertEquals(listOf(6), visible["B"])
     }
+    @Test fun saturdayAndSundayAreIndependentAndSundayUsesSixthVisibleColumn() {
+        val d = data(meeting("sat", day=6), meeting("sun", day=7))
+        for (saturday in listOf(false, true)) for (sunday in listOf(false, true)) {
+            val settings = TimetableSettings(showSaturday=saturday, showSunday=sunday)
+            assertEquals(listOfNotNull("sat".takeIf { saturday }, "sun".takeIf { sunday }).toSet(),
+                TimetableRules.cards(d, 1, settings).map { it.meeting.id }.toSet())
+            assertEquals(listOf(1,2,3,4,5) + listOfNotNull(6.takeIf { saturday }, 7.takeIf { sunday }), settings.visibleDays)
+        }
+        assertEquals(5, TimetableSettings(showSunday=true).visibleDays.indexOf(7))
+    }
     @Test fun weekendAndHolidayFollowSettings() {
         val d = data(meeting("weekend", day=7))
         assertTrue(TimetableRules.cards(d,1,TimetableSettings()).isEmpty())
-        assertEquals(1,TimetableRules.cards(d,1,TimetableSettings(showWeekend=true)).size)
-        assertEquals(MeetingState.OTHER_WEEK,TimetableRules.cards(d,0,TimetableSettings(showWeekend=true)).single().state)
-        assertTrue(TimetableRules.cards(d,0,TimetableSettings(showOtherWeeks=false,showWeekend=true)).isEmpty())
+        assertEquals(1,TimetableRules.cards(d,1,TimetableSettings(showSaturday=true,showSunday=true)).size)
+        assertEquals(MeetingState.OTHER_WEEK,TimetableRules.cards(d,0,TimetableSettings(showSaturday=true,showSunday=true)).single().state)
+        assertTrue(TimetableRules.cards(d,0,TimetableSettings(showOtherWeeks=false,showSaturday=true,showSunday=true)).isEmpty())
     }
     @Test fun datesCoverHolidayBoundariesCrossYearAndPastSemester() {
         val weeks=data().weeks

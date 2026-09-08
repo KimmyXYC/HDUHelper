@@ -80,7 +80,7 @@ class ExamUiTest {
         compose.onNodeWithText("2026-09-19(09:15-11:15)").assertIsDisplayed()
         compose.onNodeWithText("12").assertIsDisplayed()
         compose.onNodeWithText("编辑").assertDoesNotExist()
-        assertFalse(state.settings.showWeekend)
+        assertFalse(state.settings.showSaturday)
     }
     @Test fun scheduleSortsExamAfterCourseAndBeforeCustomEvent() {
         val event = ScheduleEvent(title = "合成日程", start = "2026-09-19T12:00", end = "2026-09-19T13:00")

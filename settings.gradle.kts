@@ -23,4 +23,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "HDUHelper"
-include(":app")
+include(":app", ":xposed", ":xposed-contract")

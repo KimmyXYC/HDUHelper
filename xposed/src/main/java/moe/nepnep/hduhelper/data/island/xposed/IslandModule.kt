@@ -61,7 +61,7 @@ class IslandModule : XposedModule() {
     }
 
     private fun startHost(context: Context) {
-        if (host == null) host = IslandSystemHost(context) { baseReady && pluginReady && authReady }
+        if (host == null) host = IslandSystemHost(context, moduleApplicationInfo.sourceDir) { baseReady && pluginReady && authReady }
         host?.register()
     }
 

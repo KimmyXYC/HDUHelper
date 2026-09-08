@@ -20,6 +20,7 @@ def run(*args, capture=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--component", choices=("app", "xposed"), default="app")
     parser.add_argument("--apk", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--signing-dir", required=True, type=Path)
@@ -28,7 +29,7 @@ def main():
     mode.add_argument("--tag")
     mode.add_argument("--ci-version")
     args = parser.parse_args()
-    version, code = version_module.project_version()
+    version, code = version_module.project_version(args.component)
     if args.ci_version:
         sha = run("git", "-C", version_module.ROOT, "rev-parse", "HEAD", capture=True).strip()[:7]
         expected = f"v{version}.{sha}"
@@ -36,7 +37,7 @@ def main():
             parser.error(f"CI version must match the checked-out source: {expected}")
         version = expected
     else:
-        version_module.validate_tag(args.tag, version)
+        version_module.validate_tag(args.tag, version_module.project_version()[0])
     keystore = args.signing_dir / "release.p12"
     password = args.signing_dir / "release.password"
     for path in (args.apk, keystore, password):
@@ -46,7 +47,7 @@ def main():
         parser.error(f"Refusing to overwrite {args.output}")
     badging = run(args.build_tools / "aapt2", "dump", "badging", args.apk, capture=True)
     package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
-    if not package or package.groups() != ("moe.nepnep.hduhelper", str(code), version):
+    if not package or package.groups() != ("moe.nepnep.hduhelper" + (".xposed" if args.component == "xposed" else ""), str(code), version):
         parser.error("APK package/version does not match the release configuration")
     debuggable = "application-debuggable" in badging
     if debuggable != bool(args.ci_version):

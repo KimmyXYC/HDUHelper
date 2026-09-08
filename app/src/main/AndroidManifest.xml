@@ -14,7 +14,10 @@
     <permission android:name="moe.nepnep.hduhelper.permission.REQUEST_BACKGROUND_HOST" android:protectionLevel="signature" />
     <uses-permission android:name="moe.nepnep.hduhelper.permission.REQUEST_BACKGROUND_HOST" />
 
+    <uses-permission android:name="moe.nepnep.hduhelper.xposed.permission.CONFIGURE" />
+
     <queries>
+        <package android:name="moe.nepnep.hduhelper.xposed" />
         <package android:name="com.android.systemui" />
         <package android:name="miui.systemui.plugin" />
         <package android:name="com.miui.securitycenter" />

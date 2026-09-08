@@ -15,6 +15,7 @@ class IslandAccess(private val context: Context) {
     val state = mutableState.asStateFlow()
 
     init {
+        XposedFramework.initialize(context)
         scope.launch { XposedFramework.service.collect { refreshNow() } }
         scope.launch { IslandHostConnection.revision.collect { refreshNow() } }
     }
@@ -23,7 +24,7 @@ class IslandAccess(private val context: Context) {
 
     suspend fun refreshNow(): IslandCapability = withContext(Dispatchers.IO) {
         val supported = Settings.System.getInt(context.contentResolver, "notification_focus_protocol", 0) >= 3
-        val service = XposedFramework.service.value
+        val service = XposedFramework.refresh(context)
         val framework = runCatching { service != null && service.apiVersion >= 101 }.getOrDefault(false)
         val scoped = framework && runCatching {
             service!!.scope.containsAll(listOf(IslandWire.SYSTEM_UI, IslandWire.PLUGIN))
@@ -31,7 +32,8 @@ class IslandAccess(private val context: Context) {
         val host = IslandHostConnection.binder.value
         val response = if (framework && scoped && supported && host != null) runCatching { IslandWire.call(host, IslandWire.STATUS) }.getOrNull() else null
         val result = IslandCapability(supported, framework, scoped,
-            hookReady = response?.getInt("version") == IslandWire.VERSION && response.getBoolean("ready"),
+            hookReady = response?.getInt("version") == IslandWire.VERSION && response.getBoolean("ready") &&
+                response.getString("modulePath") == service?.modulePath,
             muteSupported = response?.getBoolean("muteSupported") == true,
             mutedByModule = response?.getBoolean("owned") == true,
             ringerSilent = response?.getBoolean("silent") == true,

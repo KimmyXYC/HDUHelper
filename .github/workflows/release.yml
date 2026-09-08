@@ -33,11 +33,15 @@ jobs:
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v6.3.0
       - name: Test and optimize release
-        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :xposed:assembleRelease :xposed:lintRelease
+      - name: Verify APK separation
+        run: python3 tools/verify-apk-split.py app/build/outputs/apk/release/app-release-unsigned.apk xposed/build/outputs/apk/release/xposed-release-unsigned.apk
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: unsigned-release
-          path: app/build/outputs/apk/release/*-unsigned.apk
+          path: |
+            app/build/outputs/apk/release/*-unsigned.apk
+            xposed/build/outputs/apk/release/*-unsigned.apk
           if-no-files-found: error
           retention-days: 1
       - uses: actions/upload-artifact@v7.0.1
@@ -48,6 +52,8 @@ jobs:
             app/build/outputs/mapping/release/
             app/build/reports/
             app/build/test-results/
+            xposed/build/reports/
+            xposed/build/outputs/mapping/release/
           retention-days: 90
 
   publish:
@@ -99,12 +105,17 @@ jobs:
           rm "$RUNNER_TEMP/hduhelper-signing/keystore.base64"
       - name: Sign and verify
         run: |
-          python3 tools/sign-release.py --apk unsigned/app-release-unsigned.apk \
+          python3 tools/sign-release.py --apk unsigned/app/build/outputs/apk/release/app-release-unsigned.apk \
             --output "dist/HDUHelper-$GITHUB_REF_NAME.apk" \
             --signing-dir "$RUNNER_TEMP/hduhelper-signing" \
             --build-tools "$ANDROID_HOME/build-tools/36.0.0" --tag "$GITHUB_REF_NAME"
+          module_version=$(python3 tools/build-version.py version --component xposed)
+          python3 tools/sign-release.py --component xposed --apk unsigned/xposed/build/outputs/apk/release/xposed-release-unsigned.apk \
+            --output "dist/HDUHelper-Xposed-$module_version.apk" \
+            --signing-dir "$RUNNER_TEMP/hduhelper-signing" \
+            --build-tools "$ANDROID_HOME/build-tools/36.0.0" --tag "$GITHUB_REF_NAME"
           cd dist
-          sha256sum "HDUHelper-$GITHUB_REF_NAME.apk" > SHA256SUMS
+          sha256sum *.apk > SHA256SUMS
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

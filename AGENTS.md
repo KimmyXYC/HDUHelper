@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-HDUHelper is a single-module Android app using Kotlin, Jetpack Compose, and MIUIX. Application code lives in `app/src/main/java/moe/nepnep/hduhelper/`:
+HDUHelper uses Kotlin, Jetpack Compose, and MIUIX. `app` is the main APK; `xposed` builds the optional independently versioned Xposed APK; `xposed-contract` shares their Binder contracts and models. Keep libxposed and hook entry points only in `xposed`; both APKs must use the same signing key. Application code lives in `app/src/main/java/moe/nepnep/hduhelper/`:
 
 - `data/auth/`: CAS/SSO protocol, session storage, and authentication recovery.
 - `data/settings/` and `data/network/`: preferences and connectivity monitoring.
@@ -17,6 +17,7 @@ Open the root project in Android Studio and configure the SDK through local `loc
 
 Run from the repository root:
 
+- `./gradlew :xposed:assembleDebug :xposed:lintDebug`: build and check the optional module.
 - `./gradlew :app:assembleDebug`: build `app/build/outputs/apk/debug/app-debug.apk`.
 - `./gradlew :app:testDebugUnitTest`: run JVM unit tests.
 - `./gradlew :app:lintDebug`: run Android Lint.

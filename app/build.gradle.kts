@@ -56,8 +56,7 @@ androidComponents {
 }
 
 dependencies {
-    compileOnly(libs.libxposed.api)
-    implementation(libs.libxposed.service)
+    implementation(project(":xposed-contract"))
     implementation(libs.zxing.core)
     implementation(libs.bouncycastle)
     implementation(platform(libs.androidx.compose.bom))

@@ -42,21 +42,19 @@ class BackgroundDeviceTest {
                 runCatching { BackgroundWire.status(host) }.getOrNull()?.let {
                     putBoolean("background_host_ready", it.getBoolean("ready"))
                     putBoolean("background_host_enabled", it.getBoolean("enabled"))
-                    putBoolean("background_host_current", it.getString("modulePath") == context.applicationInfo.sourceDir)
+                    putBoolean("background_host_current", it.getString("modulePath") == XposedFramework.service.value?.modulePath)
                 }
             }
             XposedFramework.service.value?.let { service ->
-                putString("background_framework", "${service.frameworkName} ${service.frameworkVersion} / ${service.apiVersion} / ${service.frameworkProperties}")
+                putInt("background_framework_api", service.apiVersion)
                 putBoolean("background_system_scoped", service.scope.contains("system"))
-                runCatching { service.getRemotePreferences(BackgroundWire.GROUP).getBoolean(BackgroundWire.ENABLED, false) }
-                    .onSuccess { putBoolean("background_remote_enabled", it) }
-                    .onFailure { putString("background_remote_error", it.javaClass.simpleName) }
+                putBoolean("background_remote_supported", service.remote)
             }
         })
         assertNotEquals(PermissionState.UNKNOWN, status.batteryExemption)
     }
 
-    @Test fun updatedApkRequiresSystemServerRestart(): Unit = runBlocking {
+    @Test fun updatedModuleApkRequiresSystemServerRestart(): Unit = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("backgroundUpdated") == "true")
         container.background.refreshNow()
         delay(1500)

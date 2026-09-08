@@ -2,7 +2,6 @@ package moe.nepnep.hduhelper.data.background
 
 import android.content.Context
 import android.content.Intent
-import io.github.libxposed.service.XposedService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -16,6 +15,7 @@ class BackgroundAccess(private val context: Context, private val settings: Setti
     val state = mutableState.asStateFlow()
 
     init {
+        XposedFramework.initialize(context)
         scope.launch {
             combine(XposedFramework.service, BackgroundHostConnection.revision,
                 settings.state.map { it.backgroundEnhancement }.distinctUntilChanged()) { _, _, _ -> Unit }
@@ -28,25 +28,21 @@ class BackgroundAccess(private val context: Context, private val settings: Setti
     @android.annotation.SuppressLint("UseKtx") // Verify remote preference persistence before reporting success.
     suspend fun refreshNow(): BackgroundStatus = withContext(Dispatchers.IO) { mutex.withLock {
         var result = BackgroundDetector.read(context)
-        val service = XposedFramework.service.value
+        val service = XposedFramework.refresh(context)
         val host = BackgroundHostConnection.binder.value
         fun readHost() = if (host != null) runCatching { BackgroundWire.status(host) }.getOrNull() else null
         var response = readHost()
-        val currentHost = response?.getString("modulePath") == context.applicationInfo.sourceDir
+        val currentHost = service != null && response?.getString("modulePath") == service.modulePath
         val detected = response
         if (detected?.getInt("version") == BackgroundWire.VERSION) {
             fun permission(key: String) = PermissionState.entries.firstOrNull { it.name == detected.getString(key) } ?: PermissionState.UNKNOWN
             result = result.copy(autostart = permission("autostart"), vendorBattery = permission("vendorBattery"))
         }
         val desired = settings.state.value.backgroundEnhancement
-        val remoteSupported = runCatching { service != null && service.frameworkProperties and XposedService.PROP_CAP_REMOTE != 0L }.getOrDefault(false)
-        // Synchronize OFF even if a user removed the scope while its old hooks are still loaded.
-        val synced = remoteSupported && runCatching {
-            val prefs = service!!.getRemotePreferences(BackgroundWire.GROUP)
-            val needsWrite = prefs.getBoolean(BackgroundWire.ENABLED, false) != desired ||
-                (currentHost && response?.getBoolean("enabled") != desired)
-            !needsWrite || prefs.edit().putBoolean(BackgroundWire.ENABLED, desired).commit()
-        }.getOrDefault(false)
+        val remoteSupported = service?.remote == true
+        // Synchronize OFF even when a previously loaded hook has lost its scope.
+        val synced = remoteSupported && XposedFramework.setBackground(context, desired,
+            currentHost && response?.getBoolean("enabled") != desired)
         // A persisted value is not an acknowledgement from system_server. Allow its asynchronous
         // preference callback to apply the change before showing a failure or rescheduling alarms.
         if (synced && currentHost && response?.getBoolean("ready") == true) {

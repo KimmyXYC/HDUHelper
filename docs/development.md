@@ -5,13 +5,19 @@
 使用 Android Studio 打开项目，在本机 `local.properties` 配置 SDK 路径。项目使用 JDK 25、Gradle Wrapper、Android SDK 37（SDK 包名 `platforms;android-37.0`）和 Build Tools 36.0.0；Java 源码兼容级别为 11，最低 Android API 为 33。依赖版本集中在 `gradle/libs.versions.toml`。
 
 ```sh
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+./gradlew :app:assembleDebug :xposed:assembleDebug :app:testDebugUnitTest :app:lintDebug :xposed:lintDebug
 ./gradlew :app:assembleDebugAndroidTest
 ```
 
-产物位于 `app/build/outputs/apk/debug/` 和 `app/build/outputs/apk/androidTest/debug/`。
+产物分别位于 `app/build/outputs/apk/debug/`、`xposed/build/outputs/apk/debug/` 和 `app/build/outputs/apk/androidTest/debug/`。
+
+`:app` 是主应用；`:xposed` 是独立 APK，包名 `moe.nepnep.hduhelper.xposed`；`:xposed-contract` 只共享 Binder 协议和必要模型。Hook 入口、META-INF 元数据、libxposed 服务依赖均归独立模块，主应用不含 Xposed 入口。主应用通过签名权限及调用 UID 双重校验的 Provider 读取模块状态、提交开关，Hook 仍使用原有的主应用 Binder 通道。模块更新检测比较独立模块的 APK 路径，与主应用安装路径无关。两个 APK 必须同签名。
+
+首次迁移需关闭旧“杭电助手”模块，安装并启用“杭电助手 Xposed”，选定作用域后重启一次。后续只更新主应用无需重启，模块代码或作用域改变才需要重启宿主。模块未安装或未激活时，主应用使用普通提醒。
 
 ## 测试
+
+`python3 tools/verify-apk-split.py 主应用.apk 模块.apk` 检查最终 DEX 类定义、模块入口和作用域，Debug 与 Release 均在 CI 中执行。
 
 JVM 测试使用 JUnit 4、MockWebServer 和协程测试工具，覆盖认证、并发恢复、加密存储、一码通签名及课表解析等场景。设备测试使用 AndroidX、Compose 和 Espresso。
 
@@ -49,13 +55,13 @@ adb shell am instrument -w \
 
 通知设置分别检测自启动、Android 电池优化豁免和小米省电策略，返回设置页时刷新。“电池优化”弹窗提供两个系统入口。小米自启动只读查询 AppOps 10008；省电策略只读查询 PowerKeeper `userTable` 的本包、本用户 `bgControl`，不调用可能修改设置的 `getPowerSaveAppConfigure`。权限不足、缺少记录或未知值显示“无法检测”；支持的系统框架桥接可提供特权只读查询，结果仍为系统真实设置。
 
-“Xposed 后台提醒增强”默认关闭，独立于超级岛。启用需要增加 LSPosed 的 `system` 系统框架作用域并重启设备；现代 API 的 `android` 是普通系统包，不能替代 `system`。API 101 的服务连接由两项功能共用，开关经远程偏好存储同步；系统端仅适配 HyperOS `AlarmManagerServiceStubImpl` 的投递、对齐和 SSRU 限制，检查 PendingIntent 创建包名、UID、目标包和课程/日程 action 后才豁免。所有必需签名匹配且真实通道确认后才报告就绪。关闭后恢复原始判断，不修改全局省电设置，不提供强行停止后的自动拉起，也不持有常驻保活服务。
+“Xposed 后台提醒增强”默认关闭，独立于超级岛。启用需要增加 LSPosed 的 `system` 系统框架作用域并重启设备；现代 API 的 `android` 是普通系统包，不能替代 `system`。独立模块持有的 API 101 服务连接由两项功能共用，开关经远程偏好存储同步；系统端仅适配 HyperOS `AlarmManagerServiceStubImpl` 的投递、对齐和 SSRU 限制，检查 PendingIntent 创建包名、UID、目标包和课程/日程 action 后才豁免。所有必需签名匹配且真实通道确认后才报告就绪。关闭后恢复原始判断，不修改全局省电设置，不提供强行停止后的自动拉起，也不持有常驻保活服务。
 
 `BackgroundStatusTest` 覆盖权限映射与提醒身份匹配；`BackgroundDeviceTest` 默认执行只读状态和伪造通道拒绝测试。添加 `-e backgroundEnabled true` 才验证真实 Hook、远程开关、课程/日程闹钟实际命中与无关 action 不受影响；测试使用无效事件令牌，撤销所有测试闹钟并恢复开关。锁屏与系统回收后的真实通知仍需课程、日程回归测试验证。
 
-系统框架模块调试必须使用 `adb install --no-incremental -r APK` 完整安装：真机增量安装的 APK 在早期开机阶段曾被 LSPosed 读取时报 `I/O error`，导致系统框架注入被跳过，而解锁后应用及系统界面模块仍能正常工作。应用 APK 更新后重启设备；仅更新测试 APK 无需重启。
+系统框架模块调试必须使用 `adb install --no-incremental -r APK` 完整安装：真机增量安装的 APK 在早期开机阶段曾被 LSPosed 读取时报 `I/O error`，导致系统框架注入被跳过，而解锁后应用及系统界面模块仍能正常工作。独立模块 APK 更新后重启设备；仅更新主应用或测试 APK 无需重启。
 
-应用会核对系统框架中已加载模块的 APK 路径；覆盖安装后即使旧模块仍响应，也必须显示需要重启。升级前后可分别用 `BackgroundDeviceTest.updatedApkRequiresSystemServerRestart`（参数 `-e backgroundUpdated true`）和 `loadedHostReportsRealPermissionsAndSwitchControlsReminderAlarmExemptions`（参数 `-e backgroundEnabled true`）验证更新提示、配置回执和真实闹钟行为。后者通过状态流等待配置生效，不轮询刷新，并恢复原有开关。
+应用会核对系统框架中已加载的独立模块 APK 路径；覆盖安装模块后即使旧模块仍响应，也必须显示需要重启。升级前后可分别用 `BackgroundDeviceTest.updatedModuleApkRequiresSystemServerRestart`（参数 `-e backgroundUpdated true`）和 `loadedHostReportsRealPermissionsAndSwitchControlsReminderAlarmExemptions`（参数 `-e backgroundEnabled true`）验证更新提示、配置回执和真实闹钟行为。后者通过状态流等待配置生效，不轮询刷新，并恢复原有开关。
 
 `BackgroundAlarmLifecycleDeviceTest` 用 `-e backgroundLifecycle true -e enhanced false`（或 `true`）运行 `prepareColdLockedReminders`，准备 50 秒后的普通课程/日程提醒并锁屏；结束 instrumentation 后用 `adb shell am kill moe.nepnep.hduhelper` 回收后台进程，等到目标时间后 15 秒，再运行 `verifyPreviouslyDeliveredColdRemindersAndRestore`。它要求通知早于验证启动且在目标时间 10 秒内发布，避免冷启动补发造成假通过。中断时以 `-e backgroundRecovery true` 运行 `restoreInterruptedColdReminderProbe`，按唯一标识清理测试数据并恢复设置。不要用强行停止替代进程回收。
 
@@ -63,7 +69,7 @@ adb shell am instrument -w \
 
 “我的 → 通知设置”默认仅开启上课提醒（提前 10 分钟），下课提醒默认提前 1 分钟但关闭，默认使用普通通知。两种提前量均通过输入框填写 0–30 的整数分钟，0 表示准点提醒。连续节次按一整段处理，使用课程所属校区的作息时间；提醒只读取当前账号、当前学期的缓存，离线无需登录，浏览其他学期和课表显示过滤不改变提醒。
 
-普通模式在配置时间提醒一次。安装包内置现代 Xposed API 101 模块：在 LSPosed 启用杭电助手，勾选 `com.android.systemui`、`miui.systemui.plugin` 并重启作用域，再返回“通知设置”。仅 HyperOS 3 及以上、模块激活且作用域授权时显示“开启课程表超级岛”，默认关闭；授权后 Hook 尚未加载时显示禁用提示。开关打开且能力检查通过时，用小米原生模板 9 替代普通提醒；否则回退普通通知，不重复响铃。已移除 Android 标准 Live Updates 及其权限，旧开关不会自动迁移为开启超级岛。
+普通模式在配置时间提醒一次。另行安装现代 Xposed API 101 模块 APK：在 LSPosed 启用“杭电助手 Xposed”，勾选 `com.android.systemui`、`miui.systemui.plugin` 并重启作用域，再返回“通知设置”。仅 HyperOS 3 及以上、模块激活且作用域授权时显示“开启课程表超级岛”，默认关闭；授权后 Hook 尚未加载时显示禁用提示。开关打开且能力检查通过时，用小米原生模板 9 替代普通提醒；否则回退普通通知，不重复响铃。已移除 Android 标准 Live Updates 及其权限，旧开关不会自动迁移为开启超级岛。
 
 超级岛仅覆盖已开启的上课/下课提醒窗口：课前或下课前倒计时，到目标时刻转为正计时，60 秒后移除。展开态显示课程名、起止时间、教室和操作按钮；胶囊显示教室及目标时间。窗口内的有界 `specialUse` 前台服务协助边界切换，退出后释放唤醒锁。取消记录及提醒去重仍使用不参与备份的散列事件日志。普通通知的精确闹钟、后台运行与通知权限要求保持不变。
 
@@ -112,12 +118,14 @@ adb shell am instrument -w -e class moe.nepnep.hduhelper.OfficialWebViewTest \
 
 ## 版本与 CI
 
-`app/build.gradle.kts` 的 `defaultConfig` 是正式版本的唯一来源。每次正式发布更新 `versionName` 并递增 `versionCode`，然后提交。
+主应用与独立模块分别以 `app/build.gradle.kts`、`xposed/build.gradle.kts` 的 `defaultConfig` 为版本来源。模块版本仅在模块或共享协议改变时递增，不随主应用版本递增。每次正式发布更新 `versionName` 并递增 `versionCode`，然后提交。
 
 CI 在分支推送和 PR 时构建 Debug，PR 检出源提交。`tools/build-version.py ci` 从实际 HEAD 生成 `v版本.7位SHA`；Gradle 属性只覆盖 Debug 版本：
 
 ```sh
-./gradlew -PciVersionName="$(python3 tools/build-version.py ci)" :app:assembleDebug
+./gradlew -PciVersionName="$(python3 tools/build-version.py ci)" \
+  -PmoduleCiVersionName="$(python3 tools/build-version.py ci --component xposed)" \
+  :app:assembleDebug :xposed:assembleDebug
 ```
 
 提供此属性时 Debug 产物为未签名 APK，交由独立任务签名；本机未提供时使用基础版本与本机 Debug 签名。CI 执行 JVM 测试、Lint、Debug 和测试 APK 构建，上传测试包与报告。CI 构建任务不访问签名 Secrets；独立签名任务使用与正式版相同的密钥。Fork PR 只构建检查、不生成签名包。CI 不测试真实账号。
@@ -136,6 +144,8 @@ python3 tools/sign-release.py \
   --signing-dir "$HOME/.local/share/hduhelper/signing" \
   --build-tools "$ANDROID_HOME/build-tools/36.0.0" --tag v1.0.0
 ```
+
+模块签名使用同一个脚本并增加 `--component xposed`，输入 `xposed/build/outputs/apk/release/xposed-release-unsigned.apk`；`--tag` 仍为本次主应用 Release 标签，模块版本从其构建文件独立核对。Release 同时发布 `HDUHelper-v主应用版本.apk` 与 `HDUHelper-Xposed-v模块版本.apk`，两者均列入校验文件。
 
 脚本检查包名、版本和构建类型；正式版不可调试，CI 使用 `--ci-version` 核对版本与实际 HEAD 且必须可调试。随后执行 zipalign、apksigner 签名及验证；密码仅通过文件读取，已存在的输出不会覆盖。签名后不要重新压缩或修改 APK。R8 mapping 位于 `app/build/outputs/mapping/release/`，发布流程保存为 90 天的诊断附件；需要长期排查时及时下载归档。
 

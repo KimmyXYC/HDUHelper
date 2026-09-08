@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 40
     outputs:
       version: ${{ steps.version.outputs.name }}
+      module-version: ${{ steps.version.outputs.module }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -33,17 +34,24 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6.3.0
       - name: Resolve CI version
         id: version
-        run: echo "name=$(python3 tools/build-version.py ci)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "name=$(python3 tools/build-version.py ci)" >> "$GITHUB_OUTPUT"
+          echo "module=$(python3 tools/build-version.py ci --component xposed)" >> "$GITHUB_OUTPUT"
       - name: Test and build
         env:
           CI_VERSION: ${{ steps.version.outputs.name }}
+          MODULE_VERSION: ${{ steps.version.outputs.module }}
         run: |
           python3 tools/test-build-version.py
-          ./gradlew --no-daemon -PciVersionName="$CI_VERSION" :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
+          ./gradlew --no-daemon -PciVersionName="$CI_VERSION" -PmoduleCiVersionName="$MODULE_VERSION" :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest :xposed:assembleDebug :xposed:lintDebug
+      - name: Verify APK separation
+        run: python3 tools/verify-apk-split.py app/build/outputs/apk/debug/app-debug-unsigned.apk xposed/build/outputs/apk/debug/xposed-debug-unsigned.apk
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: unsigned-ci
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            xposed/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 1
       - uses: actions/upload-artifact@v7.0.1
@@ -53,6 +61,7 @@ jobs:
           path: |
             app/build/reports/
             app/build/test-results/
+            xposed/build/reports/
           retention-days: 14
 
   sign:
@@ -95,9 +104,14 @@ jobs:
       - name: Sign and verify CI APK
         env:
           CI_VERSION: ${{ needs.build.outputs.version }}
+          MODULE_VERSION: ${{ needs.build.outputs.module-version }}
         run: |
-          python3 tools/sign-release.py --apk unsigned/app-debug-unsigned.apk \
+          python3 tools/sign-release.py --apk unsigned/app/build/outputs/apk/debug/app-debug-unsigned.apk \
             --output "dist/HDUHelper-$CI_VERSION.apk" --ci-version "$CI_VERSION" \
+            --signing-dir "$RUNNER_TEMP/hduhelper-signing" \
+            --build-tools "$ANDROID_HOME/build-tools/36.0.0"
+          python3 tools/sign-release.py --component xposed --apk unsigned/xposed/build/outputs/apk/debug/xposed-debug-unsigned.apk \
+            --output "dist/HDUHelper-Xposed-$MODULE_VERSION.apk" --ci-version "$MODULE_VERSION" \
             --signing-dir "$RUNNER_TEMP/hduhelper-signing" \
             --build-tools "$ANDROID_HOME/build-tools/36.0.0"
       - uses: actions/upload-artifact@v7.0.1

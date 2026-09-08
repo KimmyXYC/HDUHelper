@@ -17,7 +17,7 @@ import kotlinx.serialization.encodeToString
 import moe.nepnep.hduhelper.data.island.*
 
 /** Lives in SystemUI, so a closed island or killed module app cannot lose the restore timer. */
-internal class IslandSystemHost(private val context: Context, private val gatesReady: () -> Boolean) {
+internal class IslandSystemHost(private val context: Context, private val modulePath: String, private val gatesReady: () -> Boolean) {
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "hdu-island-bridge").apply { isDaemon = true } }
     private val audio = context.getSystemService(AudioManager::class.java)
@@ -95,12 +95,12 @@ internal class IslandSystemHost(private val context: Context, private val gatesR
     fun register() {
         worker.execute {
             runCatching { context.contentResolver.call("content://${IslandWire.AUTHORITY}".toUri(), "register", null,
-                Bundle().apply { putInt("version", IslandWire.VERSION); putBinder("host", endpoint) }) }
+                Bundle().apply { putInt("version", IslandWire.VERSION); putString("modulePath", modulePath); putBinder("host", endpoint) }) }
         }
     }
 
     private fun snapshot() = Bundle().apply {
-        putInt("version", IslandWire.VERSION)
+        putInt("version", IslandWire.VERSION); putString("modulePath", modulePath)
         putBoolean("ready", gatesReady())
         putBoolean("muteSupported", getInternal != null && setInternal != null)
         putBoolean("owned", ownership.owned)

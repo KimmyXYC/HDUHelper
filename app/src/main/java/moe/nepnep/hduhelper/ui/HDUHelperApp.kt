@@ -132,8 +132,7 @@ fun HDUHelperApp(
         onStopOrDispose { campusModel.setVisible(false) }
     }
     LifecycleStartEffect(route, destination) {
-        timetableModel.setVisible(route == "timetable_settings" || route == "main" && destination == AppDestination.TIMETABLE,
-            resetToDefault = route != "timetable_settings")
+        timetableModel.setVisible(route == "timetable_settings" || route == "main" && destination == AppDestination.TIMETABLE)
         onStopOrDispose { timetableModel.setVisible(false) }
     }
     LifecycleStartEffect(route, destination) {

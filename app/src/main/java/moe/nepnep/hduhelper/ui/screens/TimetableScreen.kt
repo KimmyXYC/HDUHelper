@@ -144,8 +144,12 @@ fun TimetableScreen(
                     val target = weeks.indexOf(state.week)
                     if (target >= 0 && target != pager.currentPage) pager.scrollToPage(target)
                 }
+                val latestWeek by rememberUpdatedState(state.week)
+                val latestOnWeek by rememberUpdatedState(onWeek)
                 LaunchedEffect(pager, weeks) {
-                    snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { weeks.getOrNull(it)?.let(onWeek) }
+                    // A restored Pager may still hold the page from before navigation.
+                    weeks.indexOf(latestWeek).takeIf { it >= 0 }?.let { pager.scrollToPage(it) }
+                    snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { weeks.getOrNull(it)?.let(latestOnWeek) }
                 }
                 AppPullToRefresh(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
                     HorizontalPager(pager, Modifier.fillMaxSize().testTag("timetable_pager"), key = { weeks[it] }) { index ->
@@ -311,7 +315,18 @@ internal fun TimetableArrangementCard(title: String, colorKey: String, location:
             if (settings.showTeacher && teacher.isNotBlank()) Text(teacher, color = text.copy(alpha = .85f), fontSize = 11.sp, lineHeight = 14.sp, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
         }
         if (overlaps > 1) Box(Modifier.align(Alignment.BottomEnd).semantics { contentDescription = "此时间段有${overlaps}项安排" }) {
-            Text(overlaps.toString(), Modifier.padding(horizontal = 3.dp), color = text, fontSize = 9.sp)
+            Canvas(Modifier.size(14.dp).testTag("overlap_fold")) {
+                val radius = 2.dp.toPx()
+                val fold = Path().apply {
+                    moveTo(size.width, radius)
+                    quadraticTo(size.width, 0f, size.width - radius, radius)
+                    lineTo(radius, size.height - radius)
+                    quadraticTo(0f, size.height, radius, size.height)
+                    lineTo(size.width, size.height)
+                    close()
+                }
+                drawPath(fold, text.copy(alpha = .55f))
+            }
         }
     }
 }

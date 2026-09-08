@@ -127,7 +127,7 @@ class LiveTimetableTest {
                 withContext(Dispatchers.Main) {model.setVisible(false);model.setVisible(true)}
                 compose.waitUntil {!model.state.value.refreshing && model.state.value.data!=null}
                 assertEquals(1,passwordLogins)
-                stage("离线缓存与返回默认周通过")
+                stage("离线缓存与恢复浏览周通过")
                 withContext(Dispatchers.Main) {net.value=true}
                 ready()
                 val previousYear=data.catalog.years.getOrNull(data.catalog.years.indexOf(data.term.year)+1)

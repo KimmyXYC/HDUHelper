@@ -43,6 +43,7 @@ class TimetableUiTest {
         compose.onNodeWithText("假期中").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回日程").assertDoesNotExist()
         compose.onNodeWithText("离开学还有 7 天").assertIsDisplayed()
+        compose.onAllNodesWithTag("overlap_fold", useUnmergedTree = true).onFirst().assertExists()
         compose.onNodeWithTag("timetable_pager").performTouchInput {swipeLeft()}
         compose.waitUntil {state.week==1}
         compose.onNodeWithText("第1周").assertIsDisplayed()
@@ -58,6 +59,28 @@ class TimetableUiTest {
         compose.onNodeWithText("老师C").assertIsDisplayed()
         compose.onNodeWithText("09:50–10:35",substring=true).assertIsDisplayed()
         compose.onNodeWithText("2/2").assertIsDisplayed()
+    }
+
+    @Test fun restoredPagerUsesBrowsedWeekInsteadOfSavedPage() {
+        var state by mutableStateOf(initial(5))
+        var visible by mutableStateOf(true)
+        compose.setContent {
+            val holder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+            HDUHelperTheme {
+                if (visible) holder.SaveableStateProvider("timetable") {
+                    TimetableScreen(state, {}, { state = state.copy(week = it) }, {}, {}, Modifier.fillMaxSize())
+                }
+            }
+        }
+        compose.onNodeWithTag("timetable_grid_5").assertExists()
+        compose.runOnIdle { visible = false }
+        compose.waitForIdle()
+        compose.runOnIdle { state = state.copy(week = 7); visible = true }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(7, state.week) }
+        compose.onNodeWithTag("timetable_grid_7").assertExists()
+        compose.onNodeWithTag("timetable_pager").performTouchInput { swipeLeft() }
+        compose.waitUntil { state.week == 8 }
     }
 
     @Test fun termPickerWeekendAndFullDayScrollInLightTheme() {

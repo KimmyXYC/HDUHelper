@@ -1,7 +1,6 @@
 package moe.nepnep.hduhelper.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -50,12 +49,11 @@ internal fun TimetableWeekPicker(show: Boolean, state: TimetableUiState, onDismi
                             val shape = RoundedCornerShape(12.dp)
                             val label = TimetableWeekRules.label(data, week, state.settings.showExams)
                             Box(Modifier.weight(1f).heightIn(min = 48.dp).clip(shape)
-                                .background(MiuixTheme.colorScheme.surfaceContainer)
-                                .then(if (browsing && !isCurrent) Modifier.border(1.dp, MiuixTheme.colorScheme.onSurfaceVariantSummary, shape) else Modifier)
+                                .background(if (browsing) MiuixTheme.colorScheme.primary.copy(alpha = .12f) else MiuixTheme.colorScheme.surfaceContainer)
                                 .clickable(role = Role.Button) { onDismiss(); onWeek(week) }
                                 .semantics { selected = browsing; contentDescription = "$label${if (isCurrent) "，当前周" else ""}" }
                                 .testTag("week_choice_$week").padding(horizontal = 2.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
-                                Text(label, color = if (isCurrent) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                Text(label, color = if (browsing) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     fontSize = if (label.length > 2) 13.sp else 16.sp, textAlign = TextAlign.Center)
                             }
                         }

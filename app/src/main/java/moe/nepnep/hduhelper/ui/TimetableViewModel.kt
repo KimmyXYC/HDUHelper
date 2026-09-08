@@ -93,11 +93,10 @@ class TimetableViewModel(
     }
     private data class Gate(val auth: AuthState, val generation: Long, val online: Boolean, val settings: AppSettings)
 
-    fun setVisible(value: Boolean, resetToDefault: Boolean = true) {
+    fun setVisible(value: Boolean) {
         if (visible == value) return
         visible = value
         if (!value) { cancel(); return }
-        defaultPending = resetToDefault || mutable.value.selectedTerm == null
         mutable.value = mutable.value.copy(today = today())
         if (!blocked && auth.value.profile != null) load(defaultPending)
     }
@@ -119,7 +118,7 @@ class TimetableViewModel(
         mutable.value.data?.let { data ->
             TimetableWeekRules.current(data, mutable.value.today, mutable.value.settings.showExams)?.let(::selectWeek)
         }
-        load(defaultTerm = true, resetWeek = true, userInitiated = true)
+        load(defaultTerm = true, resetWeek = true)
     }
 
     fun setSettings(value: TimetableSettings) = writeSettings(value)
@@ -146,6 +145,7 @@ class TimetableViewModel(
             val week = if (resetDisplayedWeek || mutable.value.data?.term?.key != data.term.key || mutable.value.week !in allowed) TimetableRules.defaultWeek(ExamRules.weeks(data, mutable.value.settings.showExams), mutable.value.today) else mutable.value.week
             mutable.value = mutable.value.copy(data = data, catalog = data.catalog, selectedTerm = data.term, week = week,
                 selectedCampus = readCampus(account, data.term.key)?.takeIf { id -> data.clocks.any { it.id == id } }, status = TimetableStatus.READY)
+            defaultPending = false
             resetDisplayedWeek = false
         }
         request = viewModelScope.launch {

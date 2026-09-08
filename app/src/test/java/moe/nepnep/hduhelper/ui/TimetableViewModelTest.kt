@@ -91,7 +91,7 @@ class TimetableViewModelTest {
             // This fake's calendar remains in the future; default follows dates, not numeric year guessing.
             assertEquals(0,model.state.value.week)
             model.setVisible(false);model.setVisible(true);runCurrent()
-            assertEquals(term.key,model.state.value.selectedTerm!!.key)
+            assertEquals(old.key,model.state.value.selectedTerm!!.key)
             net.value=false;runCurrent();model.refresh();runCurrent()
             assertNotNull(model.state.value.data);assertTrue(model.state.value.offline)
             val before=source.calls;net.value=true;runCurrent();assertEquals(before+1,source.calls)
@@ -134,7 +134,7 @@ class TimetableViewModelTest {
             val model = TimetableViewModel(source, MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
                 MutableStateFlow(1L), net, MutableStateFlow(AppSettings()), { _, _ -> null }, {}, { _, _, _ -> })
             store.put("test", model)
-            model.setVisible(true, resetToDefault = false); runCurrent()
+            model.setVisible(true); runCurrent()
             assertEquals(TimetableStatus.ERROR, model.state.value.status)
             assertNull(model.state.value.data)
             assertEquals(0, source.calls)
@@ -157,7 +157,7 @@ class TimetableViewModelTest {
             model.selectTerm(previous); runCurrent(); model.selectWeek(5)
             model.setVisible(false)
             source.pause = CompletableDeferred()
-            model.setVisible(true, resetToDefault = false); runCurrent()
+            model.setVisible(true); runCurrent()
             assertEquals(previous, model.state.value.selectedTerm)
             assertEquals(5, model.state.value.week)
             assertEquals("2", model.state.value.selectedCampus)
@@ -186,4 +186,82 @@ class TimetableViewModelTest {
             assertEquals(0, source.calls)
         } finally { store.clear(); Dispatchers.resetMain() }
     }
+    @Test fun reentryAcrossWeeksPreservesSelectionButNewModelStartsAtCurrentWeek() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val store = ViewModelStore()
+        try {
+            val source = Source()
+            var date = LocalDate.of(2026, 9, 21)
+            fun create() = TimetableViewModel(source,
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(true), MutableStateFlow(AppSettings()),
+                { _, _ -> null }, {}, { _, _, _ -> }, today = { date })
+            val model = create(); store.put("first", model)
+            model.setVisible(true); runCurrent(); assertEquals(2, model.state.value.week)
+            model.selectWeek(5)
+            repeat(2) {
+                model.setVisible(false)
+                date = date.plusWeeks(1)
+                model.setVisible(true); runCurrent()
+                assertEquals(5, model.state.value.week)
+                assertEquals(date, model.state.value.today)
+            }
+            val fresh = create(); store.put("fresh", fresh)
+            fresh.setVisible(true); runCurrent()
+            assertEquals(4, fresh.state.value.week)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun cachedSelectionSurvivesOfflineFailureAndInterruptedInitialUpdates() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val store = ViewModelStore()
+        try {
+            for (mode in listOf("offline", "failure", "interrupted")) {
+                val source = Source().apply {
+                    failure = mode == "failure"
+                    if (mode == "interrupted") catalogPause = CompletableDeferred()
+                }
+                val net = MutableStateFlow(mode != "offline")
+                val model = TimetableViewModel(source,
+                    MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                    MutableStateFlow(1L), net, MutableStateFlow(AppSettings()),
+                    { _, _ -> null }, {}, { _, _, _ -> }, today = { LocalDate.of(2026, 9, 21) })
+                store.put(mode, model); model.setVisible(true); runCurrent()
+                assertNotNull(model.state.value.data)
+                model.selectWeek(5)
+                model.setVisible(false); model.setVisible(true); runCurrent()
+                assertEquals(mode, 5, model.state.value.week)
+                source.failure = false; source.catalogPause?.complete(Unit)
+                net.value = true; runCurrent(); model.refresh(); runCurrent()
+                assertEquals(mode, 5, model.state.value.week)
+                model.setVisible(false)
+            }
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun returnCurrentWeekUpdatesSilentlyWhilePullRefreshShowsIndicator() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val store = ViewModelStore()
+        try {
+            val source = Source()
+            val model = TimetableViewModel(source,
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(true), MutableStateFlow(AppSettings()),
+                { _, _ -> null }, {}, { _, _, _ -> }, today = { LocalDate.of(2026, 9, 21) })
+            store.put("test", model); model.setVisible(true); runCurrent()
+            model.selectWeek(5)
+            source.pause = CompletableDeferred()
+            val before = source.calls
+            model.goToDefaultWeek()
+            assertEquals(2, model.state.value.week)
+            runCurrent()
+            assertEquals(before + 1, source.calls)
+            assertFalse(model.state.value.refreshing)
+            model.selectWeek(6)
+            source.pause!!.complete(Unit); runCurrent()
+            assertEquals(6, model.state.value.week)
+            source.pause = CompletableDeferred(); model.refresh(); runCurrent()
+            assertTrue(model.state.value.refreshing)
+            source.pause!!.complete(Unit); runCurrent()
+            assertFalse(model.state.value.refreshing)
+        } finally { store.clear(); Dispatchers.resetMain() }
+    }
+
 }

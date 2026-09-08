@@ -79,20 +79,22 @@ fun TimetableTopBar(state: TimetableUiState, onDefault: () -> Unit, onTerm: (Aca
 @Composable
 internal fun TermPicker(show: Boolean, catalog: TimetableCatalog, selected: AcademicTerm, onDismiss: () -> Unit, onSelect: (AcademicTerm) -> Unit) {
     var year by remember(show, selected.key) { mutableStateOf(selected.year) }
-    WindowDialog(show = show, title = "切换学期", onDismissRequest = onDismiss) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton("‹", { val i = catalog.years.indexOf(year); if (i + 1 < catalog.years.size) year = catalog.years[i + 1] }, Modifier.testTag("term_previous_year"))
-                Text("$year–${year.toIntOrNull()?.plus(1) ?: ""}", Modifier.weight(1f), textAlign = TextAlign.Center)
-                TextButton("›", { val i = catalog.years.indexOf(year); if (i > 0) year = catalog.years[i - 1] }, Modifier.testTag("term_next_year"))
-            }
-            for (term in catalog.terms) {
-                val choice = AcademicTerm(year, term.code, term.name)
-                val isSelected = choice.key == selected.key
-                TextButton("第${term.name}学期${if (choice.key == catalog.current.key) " · 当前学期" else ""}${if (isSelected) " ✓" else ""}",
-                    onClick = { onSelect(choice) }, modifier = Modifier.fillMaxWidth().testTag("term_${term.code}").semantics { this.selected = isSelected },
-                    colors = if (isSelected) ButtonDefaults.textButtonColors(color = MiuixTheme.colorScheme.primary.copy(alpha = .12f), textColor = MiuixTheme.colorScheme.primary)
-                        else ButtonDefaults.textButtonColors())
+    moe.nepnep.hduhelper.ui.theme.FullSizeComponentTheme {
+        WindowDialog(show = show, title = "切换学期", onDismissRequest = onDismiss) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton("‹", { val i = catalog.years.indexOf(year); if (i + 1 < catalog.years.size) year = catalog.years[i + 1] }, Modifier.testTag("term_previous_year"))
+                    Text("$year–${year.toIntOrNull()?.plus(1) ?: ""}", Modifier.weight(1f), textAlign = TextAlign.Center)
+                    TextButton("›", { val i = catalog.years.indexOf(year); if (i > 0) year = catalog.years[i - 1] }, Modifier.testTag("term_next_year"))
+                }
+                for (term in catalog.terms) {
+                    val choice = AcademicTerm(year, term.code, term.name)
+                    val isSelected = choice.key == selected.key
+                    TextButton("第${term.name}学期${if (choice.key == catalog.current.key) " · 当前学期" else ""}${if (isSelected) " ✓" else ""}",
+                        onClick = { onSelect(choice) }, modifier = Modifier.fillMaxWidth().testTag("term_${term.code}").semantics { this.selected = isSelected },
+                        colors = if (isSelected) ButtonDefaults.textButtonColors(color = MiuixTheme.colorScheme.primary.copy(alpha = .12f), textColor = MiuixTheme.colorScheme.primary)
+                            else ButtonDefaults.textButtonColors())
+                }
             }
         }
     }

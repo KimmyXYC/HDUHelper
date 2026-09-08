@@ -76,6 +76,11 @@ enum class TimetableFailure { AUTHORIZATION, PERMISSION, CLOSED, PROTOCOL, NETWO
 class TimetableException(val kind: TimetableFailure, override val message: String) : Exception(message)
 
 interface TimetableSession {
+    suspend fun gradeCatalog(): TimetableCatalog = throw TimetableException(TimetableFailure.PROTOCOL, "成绩查询不可用")
+    suspend fun fetchGrades(account: String, term: AcademicTerm, catalog: TimetableCatalog): moe.nepnep.hduhelper.data.grades.GradeSnapshot =
+        throw TimetableException(TimetableFailure.PROTOCOL, "成绩查询不可用")
+    suspend fun gradeComponents(term: AcademicTerm, grade: moe.nepnep.hduhelper.data.grades.CourseGrade): List<moe.nepnep.hduhelper.data.grades.GradeComponent> =
+        throw TimetableException(TimetableFailure.PROTOCOL, "成绩分项不可用")
     suspend fun fetchExams(account: String, term: AcademicTerm): ExamSnapshot = ExamSnapshot()
     suspend fun authorize(ticket: String)
     suspend fun catalog(): TimetableCatalog

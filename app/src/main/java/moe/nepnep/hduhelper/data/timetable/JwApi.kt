@@ -1,5 +1,6 @@
 package moe.nepnep.hduhelper.data.timetable
 
+import moe.nepnep.hduhelper.data.grades.*
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -22,6 +23,7 @@ class JwEndpoints(
     val service: HttpUrl = "http://newjw.hdu.edu.cn/sso/driot4login".toHttpUrl(),
 ) {
     val index = origin.resolve("/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default")!!
+    val gradeIndex = origin.resolve("/jwglxt/cjcx/cjcx_cxDgXscj.html?gnmkdm=N305005&layout=default")!!
     val examIndex = origin.resolve("/jwglxt/kwgl/kscx_cxXsksxxIndex.html?gnmkdm=N358105&layout=default")!!
     internal fun accepts(url: HttpUrl): Boolean = url.scheme == origin.scheme && url.host == origin.host && url.port == origin.port &&
         url.username.isEmpty() && url.password.isEmpty() && url.fragment == null
@@ -133,12 +135,47 @@ class JwApi(private val endpoints: JwEndpoints = JwEndpoints(), private val now:
             }
         }
 
+        override suspend fun gradeCatalog(): TimetableCatalog = TimetableParser.catalog(get(endpoints.gradeIndex))
+
+        override suspend fun fetchGrades(account: String, term: AcademicTerm, catalog: TimetableCatalog): GradeSnapshot {
+            val all = mutableListOf<CourseGrade>()
+            var page = 1
+            var expectedTotal: Int? = null
+            var expectedPages: Int? = null
+            while (true) {
+                val result = GradeParser.page(post("/jwglxt/cjcx/cjcx_cxXsgrcj.html?doType=query&gnmkdm=N305005", linkedMapOf(
+                    "xnm" to term.year, "xqm" to term.code, "sfzgcj" to "", "kcbj" to "",
+                    "_search" to "false", "queryModel.showCount" to "100", "queryModel.currentPage" to page.toString(),
+                    "queryModel.sortName" to "", "queryModel.sortOrder" to "asc",
+                )), account, term)
+                if (result.page != page || result.pages !in 0..1000 || result.total < 0 ||
+                    expectedTotal?.let { it != result.total } == true || expectedPages?.let { it != result.pages } == true ||
+                    (result.pages > page && result.items.isEmpty())) GradeParser.fail()
+                expectedTotal = result.total
+                expectedPages = result.pages
+                all += result.items
+                if (page >= result.pages) {
+                    if (all.size != result.total) GradeParser.fail()
+                    return GradeSnapshot(account, term, catalog, all.distinctBy { it.id }, now())
+                }
+                page++
+            }
+        }
+
+        override suspend fun gradeComponents(term: AcademicTerm, grade: CourseGrade): List<GradeComponent> {
+            if (grade.teachingClass.isBlank() || grade.studentId.isBlank()) GradeParser.fail()
+            return GradeParser.components(post("/jwglxt/cjcx/cjcx_cxCjxqGjh.html?gnmkdm=N305005", mapOf(
+                "jxb_id" to grade.teachingClass, "xnm" to term.year, "xqm" to term.code,
+                "xh_id" to grade.studentId, "kcmc" to grade.name,
+            )))
+        }
+
         private suspend fun get(url: HttpUrl): String = query(Request.Builder().url(url).build())
         private suspend fun post(path: String, values: Map<String, String>): String = query(Request.Builder()
             .url(endpoints.origin.resolve(path)!!).post(FormBody.Builder().apply { values.forEach { (k, v) -> add(k, v) } }.build()).build())
 
         private suspend fun query(request: Request): String = response(request.newBuilder()
-            .header("X-Requested-With", "XMLHttpRequest").header("Referer", (if (request.url.encodedPath == endpoints.examIndex.encodedPath) endpoints.examIndex else endpoints.index).toString()).build()).use { r ->
+            .header("X-Requested-With", "XMLHttpRequest").header("Referer", (when { request.url.encodedPath.startsWith("/jwglxt/cjcx/") -> endpoints.gradeIndex; request.url.encodedPath == endpoints.examIndex.encodedPath -> endpoints.examIndex; else -> endpoints.index }).toString()).build()).use { r ->
             if (r.code in redirects) {
                 val target = r.header("Location")?.let { request.url.resolve(it) }
                 if (target?.encodedPath?.contains("login", ignoreCase = true) == true) expired()
@@ -155,10 +192,10 @@ class JwApi(private val endpoints: JwEndpoints = JwEndpoints(), private val now:
             return try { http.newCall(request.newBuilder().header("User-Agent", "HDUHelper/1.0 Android").header("Cache-Control", "no-store").build()).awaitJw() }
             catch (_: IOException) { throw TimetableException(TimetableFailure.NETWORK, "无法连接教务系统，请检查网络后重试") }
         }
-        private fun readBody(r: Response): String = try { r.body.string() } catch (_: IOException) { throw TimetableException(TimetableFailure.NETWORK, "课表读取中断，请重试") }
+        private fun readBody(r: Response): String = try { r.body.string() } catch (_: IOException) { throw TimetableException(TimetableFailure.NETWORK, "教务数据读取中断，请重试") }
         private fun checkStatus(r: Response) {
             if (r.code == 901 || r.code == 401) expired()
-            if (r.code == 403) throw TimetableException(TimetableFailure.PERMISSION, "没有访问此课表的权限")
+            if (r.code == 403) throw TimetableException(TimetableFailure.PERMISSION, "没有访问此教务数据的权限")
             if (!r.isSuccessful) throw TimetableException(TimetableFailure.SERVICE, "教务系统暂不可用，请稍后重试")
         }
     }
@@ -166,7 +203,7 @@ class JwApi(private val endpoints: JwEndpoints = JwEndpoints(), private val now:
     companion object {
         private val redirects = listOf(301, 302, 303, 307, 308)
         internal fun loginHtml(body: String): Boolean = body.trimStart().startsWith('<') && Jsoup.parse(body).let {
-            it.getElementById("login-page-flowkey") != null || it.title().contains("统一身份认证") || it.title().contains("用户登录") || it.select("input#yhm").isNotEmpty()
+            it.getElementById("login-page-flowkey") != null || it.title().contains("统一身份认证") || it.title().contains("用户登录") || it.select("input#yhm:not([type=hidden])").isNotEmpty()
         }
         private fun expired(): Nothing = throw TimetableException(TimetableFailure.AUTHORIZATION, "教务登录已过期，请重新授权")
         private fun protocol(): Nothing = throw TimetableException(TimetableFailure.PROTOCOL, "教务响应或跳转格式发生变化")

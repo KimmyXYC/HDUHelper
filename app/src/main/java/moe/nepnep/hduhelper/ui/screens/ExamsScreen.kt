@@ -23,7 +23,7 @@ import java.time.format.DateTimeFormatter
 import moe.nepnep.hduhelper.data.timetable.*
 import moe.nepnep.hduhelper.ui.ExamsUiState
 import moe.nepnep.hduhelper.ui.TimetableStatus
-import moe.nepnep.hduhelper.ui.components.AppPullToRefresh
+import moe.nepnep.hduhelper.ui.components.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -45,39 +45,27 @@ fun ExamsScreen(
             val cardHeight = compactExamCardHeight(agenda.upcoming + agenda.untimed + agenda.ended,
                 state.now, ((maxWidth - 52.dp) / 2 - 32.dp).coerceAtLeast(1.dp))
             LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().testTag("exams_grid"),
-                contentPadding = PaddingValues(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (state.catalog != null) item(key = "term", span = { GridItemSpan(maxLineSpan) }) {
-                    val colors = ButtonDefaults.textButtonColors()
-                    Button(onClick = { chooseTerm = true }, modifier = Modifier.fillMaxWidth().testTag("exams_choose_term"),
-                        colors = ButtonDefaults.buttonColors(color = colors.color, contentColor = colors.textColor)) {
-                        Text("${state.selectedTerm?.label ?: state.catalog.current.label}  ▾", Modifier.fillMaxWidth(),
-                            style = MiuixTheme.textStyles.button, textAlign = TextAlign.Start)
-                    }
+                contentPadding = AcademicPageLayout.contentPadding, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = AcademicPageLayout.itemSpacing) {
+                if (state.catalog != null && accessible) item(key = "term", span = { GridItemSpan(maxLineSpan) }) {
+                    SemesterSelectButton(state.selectedTerm ?: state.catalog.current, { chooseTerm = true },
+                        Modifier.testTag("exams_choose_term"))
                 }
                 if (!accessible) item(key = "auth", span = { GridItemSpan(maxLineSpan) }) {
-                    Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.Start,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        val verification = state.status == TimetableStatus.VERIFICATION_REQUIRED
-                        Text(if (verification) "请完成官方验证后查看考试安排" else "登录后查看考试安排")
-                        TextButton(if (verification) "完成官方验证" else "登录", if (verification) onVerify else onLogin,
-                            Modifier.testTag(if (verification) "exams_verify" else "exams_login"))
-                    }
+                    val verification = state.status == TimetableStatus.VERIFICATION_REQUIRED
+                    AcademicLoginPrompt("考试安排", verification, if (verification) onVerify else onLogin,
+                        actionModifier = Modifier.testTag(if (verification) "exams_verify" else "exams_login"))
                 }
                 if (accessible) {
                     val notice = state.message ?: state.exams?.message ?: if (state.offline) "离线显示最近同步的考试安排" else null
                     if (notice != null) item(key = "notice", span = { GridItemSpan(maxLineSpan) }) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(notice, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                            if (state.status == TimetableStatus.ERROR || state.exams?.failed == true) TextButton("重试", onRefresh, Modifier.testTag("exams_retry"))
-                        }
+                        AcademicPageNotice(notice)
                     }
                     if (state.status == TimetableStatus.LOADING && state.exams == null) item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
-                        Text("正在读取考试安排…", Modifier.fillMaxWidth().padding(vertical = 32.dp), textAlign = TextAlign.Start)
+                        AcademicPageMessage("正在读取考试安排…", Modifier.testTag("exams_loading"))
                     }
                     if (state.exams?.let { it.items.isEmpty() && !it.failed && it.updatedAt != null } == true) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                        Text("该学期暂无考试安排", Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("exams_empty"), textAlign = TextAlign.Start,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        AcademicPageMessage("该学期暂无考试安排", Modifier.testTag("exams_empty"))
                     }
                     agenda.featured?.let { featured ->
                         item(key = "countdown", span = { GridItemSpan(maxLineSpan) }) {
@@ -97,14 +85,13 @@ fun ExamsScreen(
                         ExamAgendaCard(exam, state.now, height = cardHeight, onClick = { detailId = exam.id })
                     }
                     if (agenda.untimed.isNotEmpty()) item(key = "untimed", span = { GridItemSpan(maxLineSpan) }) {
-                        Text("时间待确认", Modifier.padding(top = 12.dp), style = MiuixTheme.textStyles.title4)
+                        AcademicSectionTitle("时间待确认", Modifier.padding(top = 12.dp))
                     }
                     items(agenda.untimed, key = { "exam/${it.id}" }) { exam ->
                         ExamAgendaCard(exam, state.now, height = cardHeight, onClick = { detailId = exam.id })
                     }
                     if (agenda.ended.isNotEmpty()) item(key = "ended", span = { GridItemSpan(maxLineSpan) }) {
-                        Text("已结束的考试", Modifier.padding(top = 12.dp).testTag("exams_ended"), style = MiuixTheme.textStyles.title4,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        AcademicSectionTitle("已结束的考试", Modifier.padding(top = 12.dp).testTag("exams_ended"), subdued = true)
                     }
                     items(agenda.ended, key = { "exam/${it.id}" }) { exam ->
                         ExamAgendaCard(exam, state.now, ended = true, height = cardHeight, onClick = { detailId = exam.id })
@@ -114,7 +101,7 @@ fun ExamsScreen(
         }
     }
     state.catalog?.let { catalog ->
-        TermPicker(chooseTerm, catalog, state.selectedTerm ?: catalog.current, { chooseTerm = false }) {
+        TermPicker(chooseTerm && accessible, catalog, state.selectedTerm ?: catalog.current, { chooseTerm = false }) {
             chooseTerm = false
             onTerm(it)
         }

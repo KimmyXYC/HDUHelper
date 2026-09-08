@@ -15,6 +15,12 @@
 
 首次迁移需关闭旧“杭电助手”模块，安装并启用“杭电助手 Xposed”，选定作用域后重启一次。后续只更新主应用无需重启，模块代码或作用域改变才需要重启宿主。模块未安装或未激活时，主应用使用普通提醒。
 
+## 考试成绩验证
+
+“考试成绩”复用教务 SSO，独立缓存各学期成绩。学期列表完整读取后计算加权绩点，再以最多三个并发请求补充分项；“通识选修”作为 C 类课排除。离线只展示最近成功同步的数据，退出登录清理加密缓存。
+
+运行 `GradeRulesTest`、`GradeParserTest`、`GradeApiTest`、`GradeRepositoryTest`、`GradeStoreTest`、`GradesViewModelTest` 验证计算、协议与账号隔离；`GradesUiTest`、`GradesNavigationTest` 验证页面和导航。安装相同签名的主应用和测试 APK 后，可显式执行 `python3 tools/live-auth-smoke.py --serial DEVICE_SERIAL --grades` 核对真实成绩列表、分项与加权结果；账号密码通过交互和内存套接字传递，不保存真实响应或成绩截图。
+
 ## 测试
 
 `python3 tools/verify-apk-split.py 主应用.apk 模块.apk` 检查最终 DEX 类定义、模块入口和作用域，Debug 与 Release 均在 CI 中执行。

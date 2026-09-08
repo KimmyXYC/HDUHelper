@@ -88,6 +88,9 @@ fun HDUHelperApp(
     val scheduleState by scheduleModel.state.collectAsStateWithLifecycle()
     val scheduleEditor by scheduleModel.editor.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val gradesModel: GradesViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = GradesViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
+    val gradesState by gradesModel.state.collectAsStateWithLifecycle()
     val examsState by examsModel.state.collectAsStateWithLifecycle()
     val notificationModel: NotificationSettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = NotificationSettingsViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
@@ -108,6 +111,7 @@ fun HDUHelperApp(
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
     var loginReturnDestination by rememberSaveable { mutableStateOf(AppDestination.PROFILE) }
     var loginReturnToTimetableSettings by rememberSaveable { mutableStateOf(false) }
+    var loginReturnToGrades by rememberSaveable { mutableStateOf(false) }
     var loginReturnToExams by rememberSaveable { mutableStateOf(false) }
     val pageStateHolder = rememberSaveableStateHolder()
     val sensitive = route == "login" || route == "verification"
@@ -135,6 +139,10 @@ fun HDUHelperApp(
     LifecycleStartEffect(route) {
         examsModel.setVisible(route == "exams")
         onStopOrDispose { examsModel.setVisible(false) }
+    }
+    LifecycleStartEffect(route) {
+        gradesModel.setVisible(route == "grades")
+        onStopOrDispose { gradesModel.setVisible(false) }
     }
     LaunchedEffect(scheduleLink) {
         scheduleLink?.let { link ->
@@ -175,12 +183,14 @@ fun HDUHelperApp(
                     AppEvent.LoggedIn -> {
                         destination = loginReturnDestination
                         when {
+                            loginReturnToGrades && nav.popBackStack("grades", false) -> Unit
                             loginReturnToExams && nav.popBackStack("exams", false) -> Unit
                             loginReturnToTimetableSettings && nav.popBackStack("timetable_settings", false) -> Unit
                             else -> nav.popBackStack("main", false)
                         }
                         loginReturnToTimetableSettings = false
                         loginReturnToExams = false
+                        loginReturnToGrades = false
                     }
                     AppEvent.OpenVerification -> nav.navigate("verification") { launchSingleTop = true }
                     AppEvent.ClearWebSession -> VerificationCookies.clear()
@@ -196,7 +206,7 @@ fun HDUHelperApp(
         }
     }
     val back = {
-        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false; loginReturnToExams = false }
+        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false; loginReturnToExams = false; loginReturnToGrades = false }
         nav.popBackStack()
         Unit
     }
@@ -255,7 +265,7 @@ fun HDUHelperApp(
                                 onVerify = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openVerification() }, modifier = Modifier.fillMaxSize())
                             AppDestination.APPLICATIONS -> ApplicationsScreen(Modifier.fillMaxSize(), onExams = {
                                 nav.navigate("exams") { launchSingleTop = true }
-                            })
+                            }, onGrades = { nav.navigate("grades") { launchSingleTop = true } })
                             AppDestination.PROFILE -> ProfileScreen(
                                 auth,
                                 onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
@@ -337,16 +347,33 @@ fun HDUHelperApp(
             }
         }
         composable("exams") {
-            SecondaryPage("考试安排", back) {
-                moe.nepnep.hduhelper.ui.screens.ExamsScreen(examsState, examsModel::selectTerm, examsModel::refresh,
-                    onLogin = {
-                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToExams = true
-                        model.openLogin(); nav.navigate("login") { launchSingleTop = true }
-                    },
-                    onVerify = {
-                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToExams = true
-                        model.openVerification()
-                    }, modifier = it)
+            moe.nepnep.hduhelper.ui.theme.ExamPageTheme {
+                SecondaryPage("考试安排", back) {
+                    moe.nepnep.hduhelper.ui.screens.ExamsScreen(examsState, examsModel::selectTerm, examsModel::refresh,
+                        onLogin = {
+                            loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToExams = true
+                            model.openLogin(); nav.navigate("login") { launchSingleTop = true }
+                        },
+                        onVerify = {
+                            loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToExams = true
+                            model.openVerification()
+                        }, modifier = it)
+                }
+            }
+        }
+        composable("grades") {
+            moe.nepnep.hduhelper.ui.theme.ExamPageTheme {
+                SecondaryPage("考试成绩", back) {
+                    moe.nepnep.hduhelper.ui.screens.GradesScreen(gradesState, gradesModel::selectTerm, gradesModel::refresh,
+                        onLogin = {
+                            loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToGrades = true
+                            model.openLogin(); nav.navigate("login") { launchSingleTop = true }
+                        },
+                        onVerify = {
+                            loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToGrades = true
+                            model.openVerification()
+                        }, modifier = it)
+                }
             }
         }
         composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it, updateState, updateModel::check) } }

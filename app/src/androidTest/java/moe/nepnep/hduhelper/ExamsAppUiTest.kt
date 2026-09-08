@@ -25,6 +25,7 @@ import moe.nepnep.hduhelper.data.timetable.*
 import moe.nepnep.hduhelper.ui.*
 import moe.nepnep.hduhelper.ui.screens.*
 import moe.nepnep.hduhelper.ui.theme.HDUHelperTheme
+import moe.nepnep.hduhelper.ui.theme.ExamPageTheme
 import okhttp3.HttpUrl
 import org.junit.After
 import org.junit.Assert.*
@@ -93,9 +94,9 @@ class ExamsAppUiTest {
         show {
             HDUHelperTheme(darkTheme = dark) {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) {
-                    Scaffold(topBar = { TopAppBar("考试安排") }) { padding ->
+                    ExamPageTheme { Scaffold(topBar = { TopAppBar("考试安排") }) { padding ->
                         ExamsScreen(state, { state = state.copy(selectedTerm = it) }, { refreshes++ }, {}, {}, Modifier.fillMaxSize().padding(padding))
-                    }
+                    } }
                 }
             }
         }
@@ -136,9 +137,9 @@ class ExamsAppUiTest {
         val sample = exam("active", "合成进行中考试", 8, 9)
         var state by mutableStateOf(ExamsUiState(TimetableStatus.READY, catalog, term, ExamSnapshot(listOf(sample), 1), now))
         var verifies = 0
-        show { HDUHelperTheme { Scaffold { padding ->
+        show { HDUHelperTheme { ExamPageTheme { Scaffold { padding ->
             ExamsScreen(state, {}, {}, {}, { verifies++ }, Modifier.fillMaxSize().padding(padding))
-        } } }
+        } } } }
         compose.onNodeWithText("正在考试").assertIsDisplayed()
         compose.onNodeWithText("距离本场考试结束还剩").assertIsDisplayed()
         compose.runOnIdle { state = state.copy(now = now.withHour(11)) }
@@ -163,9 +164,9 @@ class ExamsAppUiTest {
         var scale by mutableFloatStateOf(1f)
         show { HDUHelperTheme(darkTheme = true) {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) {
-                Scaffold(topBar = { TopAppBar("考试安排") }) { padding ->
+                ExamPageTheme { Scaffold(topBar = { TopAppBar("考试安排") }) { padding ->
                     ExamsScreen(state, {}, {}, {}, {}, Modifier.fillMaxSize().padding(padding))
-                }
+                } }
             }
         } }
         for (fontScale in listOf(1f, 1.5f)) {

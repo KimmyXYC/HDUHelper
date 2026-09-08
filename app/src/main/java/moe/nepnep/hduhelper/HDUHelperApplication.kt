@@ -25,6 +25,7 @@ class AppContainer(application: Application) {
     val auth = AuthRepository(androidSessionStore(application), settings, HduAuthApi())
     val campusCodes = moe.nepnep.hduhelper.data.campuscode.CampusCodeRepository(auth)
     val timetables = moe.nepnep.hduhelper.data.timetable.TimetableRepository(auth, moe.nepnep.hduhelper.data.timetable.androidTimetableStore(application))
+    val grades = moe.nepnep.hduhelper.data.grades.GradeRepository(auth, moe.nepnep.hduhelper.data.grades.androidGradeStore(application))
     val schedules = moe.nepnep.hduhelper.data.schedule.ScheduleRepository(moe.nepnep.hduhelper.data.schedule.androidScheduleStore(application))
     val scheduleReminders = moe.nepnep.hduhelper.data.schedule.AndroidScheduleReminders(application, schedules)
     val island = moe.nepnep.hduhelper.data.island.IslandAccess(application)
@@ -35,5 +36,6 @@ class AppContainer(application: Application) {
         schedules.onChanged = scheduleReminders::reschedule
         auth.onSessionInvalidated(campusCodes::clear)
         auth.onSessionInvalidated(timetables::clear)
+        auth.onSessionInvalidated(grades::clear)
     }
 }

@@ -113,7 +113,7 @@ fun ScheduleScreen(
     }
     AppDatePicker(chooseDate, state.date, { chooseDate = false }, { chooseDate = false; onDate(it) })
     val linkedCourse = data?.let { ScheduleRules.courses(it, state.date) }?.firstOrNull { it.id == state.courseDetailId }
-    val linkedExam = data?.let { ExamRules.onDate(it, state.date) }?.firstOrNull { it.id == state.examDetailId }
+    val linkedExam = data?.exams?.items?.firstOrNull { it.id == state.examDetailId && (!it.timed || it.startTime?.toLocalDate() == state.date) }
     ExamDetails(exam ?: linkedExam, { exam = null; onDetail(null) })
     CourseDetails(course ?: linkedCourse, data?.clocks.orEmpty(), 1, 0, { course = null; onDetail(null) }, {})
     WindowDialog(show = detail != null && operation == null, title = detail?.event?.title, onDismissRequest = { onDetail(null) }, modifier = Modifier.testTag("schedule_details")) {
@@ -164,20 +164,15 @@ private fun ScheduleDayList(state: ScheduleUiState, date: LocalDate, onDetail: (
     onCourse: (CourseMeeting) -> Unit, onExam: (ExamArrangement) -> Unit, onRetryStorage: () -> Unit) {
     val data = state.courses
     val rows = remember(state.storage.book, data, date) {
-        val custom = state.storage.book.series.flatMap { ScheduleRules.occurrences(it, date) }.map { occurrence ->
-            val event = occurrence.event
-            AgendaRow(occurrence.key, event.title, listOf(scheduleTimeLabel(event), event.location).filter { it.isNotBlank() }.joinToString(" · "),
-                event.startTime, event.allDay, occurrence = occurrence)
+        AgendaRules.items(state.storage.book, data, date).filter { it.exam?.timed != false }.map { item ->
+            val subtitle = when {
+                item.occurrence != null -> listOf(scheduleTimeLabel(item.occurrence.event), item.location)
+                item.course != null -> listOf(TimetableRules.timeText(item.course, data!!.clocks),
+                    "第${item.course.rawSections.removeSuffix("节")}节", item.location, item.course.teacher)
+                else -> listOf(item.exam?.rawTime.orEmpty(), item.location)
+            }.filter { it.isNotBlank() }.joinToString(" · ")
+            AgendaRow(item.key, item.title, subtitle, item.start, item.allDay, item.occurrence, item.course, item.exam)
         }
-        val courses = data?.let { d -> ScheduleRules.courses(d, date).map { meeting ->
-            AgendaRow("course/${meeting.id}", meeting.name,
-                listOf(TimetableRules.timeText(meeting, d.clocks), "第${meeting.rawSections.removeSuffix("节")}节", meeting.location, meeting.teacher)
-                    .filter { it.isNotBlank() }.joinToString(" · "), ScheduleRules.courseStart(meeting, d.clocks)?.atDate(date), course = meeting)
-        } }.orEmpty()
-        val exams = data?.let { ExamRules.onDate(it, date) }.orEmpty().map {
-            AgendaRow("exam/${it.id}", it.name, listOf(it.rawTime, it.place).filter { text -> text.isNotBlank() }.joinToString(" · "), it.startTime, exam = it)
-        }
-        (custom + courses + exams).sortedWith(compareByDescending<AgendaRow> { it.allDay }.thenBy { it.start ?: LocalDateTime.MAX }.thenBy { it.key })
     }
     val message = when (state.courseStatus) {
         TimetableStatus.SIGNED_OUT -> null

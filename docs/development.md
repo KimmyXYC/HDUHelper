@@ -172,3 +172,20 @@ python3 tools/sign-release.py \
 4. Release 工作流仅接受 `v数字.数字.数字` 标签推送，并核对项目版本。分支、手动操作和预发布标签不会触发。
 5. 测试、优化构建成功后，独立任务签名并上传 APK 与 `SHA256SUMS`，附件齐全才将草稿转为正式版。已存在的 Release 不会被覆盖；失败留下草稿时先检查原因与附件，再由维护者处理。
 6. 下载正式附件，用 `sha256sum -c SHA256SUMS` 和 `apksigner verify --verbose --print-certs` 复核。
+
+
+## 桌面小组件
+
+主应用提供日程速览（2×2）、日程双行（宽4×高2）、今日日程（4×4），合并今天的自建日程、课程和考试。小组件跟随应用外观，不依赖 Xposed。
+
+按[小米技术规范](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=1584)，三种组件的最小尺寸分别为110×110、300×110、300×250dp，避免最小尺寸抬高实际格数。组件运行于独立的 `:widgetProvider` 进程，支持小米曝光刷新，根布局采用系统 background ID。主进程原子写入不含凭据的加密日历快照；组件进程仅重新读取快照，不启动认证、网络监控或提醒服务。数据与外观变更通知组件刷新，账号失效先清除快照；时间边界刷新仍可能受系统省电策略延迟。
+
+小米小组件中心的正式展示通常需要应用与小组件审核上线，详见[小米常见问题](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=1591)。本应用另提供可选的本机 Xposed 接入：在 LSPosed 启用“杭电助手 Xposed”，新增勾选“智能助理”（`com.miui.personalassistant`）并重启作用域后，小组件中心的应用列表会增加“杭电助手”。点击后使用小米原生详情页选择三个尺寸并添加组件。其他桌面仍通过 Android 标准组件入口添加。尺寸元数据变更后，请移除旧实例重新添加。
+
+Widget Center Hook 按手机上的智能助理 `25.31.31-07151812` 验证模型和方法签名，使用本机已安装的三个 Provider 构造列表与详情，且校验主应用和模块签名一致。Hook 仅补充杭电助手数据，其他应用的请求与结果直接透传；不兼容时保持宿主原有行为，并记录 `HDUWidgetCenter` 诊断。预览是主 APK 内不含用户数据的静态资源，供智能助理和桌面共同读取；可从 `WidgetDeviceTest` 生成的默认尺寸 PNG 通过 `python3 tools/update-widget-previews.py 截图目录` 更新。模块 APK 更新后需要重启宿主，主 APK 更新无需重新加载 Hook。
+
+`WidgetCenterAdapterDeviceTest` 在真实智能助理 ClassLoader 中测试数据模型、三种尺寸、重复加载、签名隔离与请求透传；实际 Hook 生效还需要 LSPosed 模块和新增作用域已启用。
+
+`WidgetRulesTest` 覆盖日程排序及边界，`WidgetDeviceTest` 用合成数据检查三种布局、深浅色、尺寸和小米组件元数据。设备截图保存在应用外部文件目录 `widget-tests/`。实际桌面拖放和手势测试要求设备允许调试输入。
+
+小组件兼容：另外注册三个不带 `miuiWidget` 元数据的标准 Android provider，始终保留在系统小组件入口中；非小米、无 Root 或未勾选智能助理作用域时直接使用这些入口。小米中心仍只展示原来的三个小米 provider。两组共享渲染、缓存、刷新和点击逻辑，不因作用域变化禁用组件，以免系统删除已放置的实例。添加页图标使用公开的 `widget_app_icon` 位图资源（复制自 xxxhdpi 启动图标）；更新启动图标时同步此资源。

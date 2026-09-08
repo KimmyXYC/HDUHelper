@@ -1,0 +1,6 @@
+<resources>
+    <color name="widget_background">#FAFAFA</color>
+    <color name="widget_tile">#EEEEEE</color>
+    <color name="widget_text">#191919</color>
+    <color name="widget_secondary">#666666</color>
+</resources>

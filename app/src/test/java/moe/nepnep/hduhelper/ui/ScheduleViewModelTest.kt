@@ -199,4 +199,25 @@ class ScheduleViewModelTest {
             assertEquals(current.term, model.state.value.courses!!.term)
         } finally { owner.clear(); runCurrent(); Dispatchers.resetMain() }
     }
+    @Test fun widgetOpensUntimedExamFromItsCachedTermAndRejectsDeletion() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler)); val owner = ViewModelStore()
+        try {
+            val past = AcademicTerm("2025", "12")
+            val source = Source().apply { terms = listOf(data(meeting("a")).copy(term = past,
+                exams = ExamSnapshot(listOf(ExamArrangement("untimed", "待定考试")), 1))) }
+            val model = ScheduleViewModel(ScheduleRepository(Store(ScheduleBook()), StandardTestDispatcher(testScheduler)), source,
+                MutableStateFlow(AuthState(AuthStatus.AUTHENTICATED, UserProfile("student", "测试"))),
+                MutableStateFlow(1L), MutableStateFlow(false), Reminders(), { LocalDateTime.parse("2026-09-14T09:00") })
+            owner.put("schedule", model)
+            val account = moe.nepnep.hduhelper.data.notifications.CourseReminderRules.hash("student")
+            model.openCourseNotification(account, past.key, "untimed", LocalDate.of(2026, 9, 14), exam = true); runCurrent()
+            assertEquals("untimed", model.state.value.examDetailId)
+            assertEquals(past, model.state.value.courses!!.term)
+            source.terms = emptyList()
+            model.openCourseNotification(account, past.key, "untimed", LocalDate.of(2026, 9, 14), exam = true); runCurrent()
+            assertNull(model.state.value.examDetailId)
+            assertNotNull(model.state.value.error)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
 }

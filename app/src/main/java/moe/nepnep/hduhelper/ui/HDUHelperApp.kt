@@ -166,6 +166,15 @@ fun HDUHelperApp(
                     scheduleModel.openCourseNotification(parts[0], parts[1], parts[2], date, exam = link.host == "exam")
                 }
             }
+            if (link.scheme == "hduhelper" && link.host == "agenda" && parts.size == 1) {
+                runCatching { java.time.LocalDate.parse(parts[0]) }.getOrNull()?.let { date ->
+                    destination = AppDestination.SCHEDULE
+                    if (sensitive) model.cancelLogin()
+                    nav.popBackStack("main", false)
+                    scheduleModel.showDetail(null)
+                    scheduleModel.selectDate(date)
+                }
+            }
             onScheduleLinkConsumed()
         }
     }

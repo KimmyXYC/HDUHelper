@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <permission android:name="moe.nepnep.hduhelper.xposed.permission.CONFIGURE" android:protectionLevel="signature" />
-    <queries><package android:name="moe.nepnep.hduhelper" /></queries>
+    <queries><package android:name="moe.nepnep.hduhelper" /><package android:name="com.miui.personalassistant" /></queries>
     <application android:label="杭电助手 Xposed" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:dataExtractionRules="@xml/data_extraction_rules" android:allowBackup="false" android:supportsRtl="true">
         <provider android:name=".ModuleBridgeProvider" android:authorities="moe.nepnep.hduhelper.xposed.bridge"
             android:exported="true" android:permission="moe.nepnep.hduhelper.xposed.permission.CONFIGURE" />

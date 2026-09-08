@@ -222,13 +222,12 @@ class ScheduleViewModel(
             readyIdentity.first { it != null && it == (auth.value.profile?.account to generation.value) }
             if (auth.value.profile?.account != account || generation.value != ownerGeneration) return@launch
             try {
-                val latest = source.cached(account)
-                val data = latest?.let { if (it.term.key == it.catalog.current.key) it else source.cached(account, it.catalog.current) }
+                val data = source.cachedTerms(account).firstOrNull { it.term.key == termKey }
                 if (auth.value.profile?.account != account || generation.value != ownerGeneration) return@launch
-                val examMatch = data?.takeIf { it.term.key == termKey }?.let { ExamRules.onDate(it, date) }?.firstOrNull { it.id == meetingId }
+                val examMatch = data?.takeIf { it.term.key == termKey }?.exams?.items?.firstOrNull { it.id == meetingId && (!it.timed || it.startTime?.toLocalDate() == date) }
                 val match = data?.takeIf { it.term.key == termKey }?.let { ScheduleRules.courses(it, date) }?.firstOrNull { it.id == meetingId }
                 mutable.update { it.copy(date = date, courses = data, detailKey = null, courseDetailId = match?.id.takeUnless { exam }, examDetailId = examMatch?.id.takeIf { exam },
-                    error = if (if (exam) examMatch == null else match == null) "该安排已修改或不属于当前学期，请刷新课表" else null) }
+                    error = if (if (exam) examMatch == null else match == null) "该安排已修改或已移除，请刷新课表" else null) }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
                 if (auth.value.profile?.account == account && generation.value == ownerGeneration) mutable.update { it.copy(error = "课程读取失败，请重试") }

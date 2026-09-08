@@ -9,10 +9,18 @@ import moe.nepnep.hduhelper.data.settings.SettingsRepository
 class HDUHelperApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        if (getProcessName().endsWith(":widgetProvider")) return
         android.webkit.WebView.setDataDirectorySuffix("hdu_auth")
         container.scheduleReminders.reschedule()
         container.courseReminders.reschedule()
     }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (getProcessName().endsWith(":widgetProvider")) desktopWidgets.request() else container.widgets.request()
+    }
+
+    val desktopWidgets by lazy { moe.nepnep.hduhelper.widget.DesktopWidgets(this) }
 
     val container: AppContainer by lazy { AppContainer(this) }
 }
@@ -31,9 +39,12 @@ class AppContainer(application: Application) {
     val island = moe.nepnep.hduhelper.data.island.IslandAccess(application)
     val background = moe.nepnep.hduhelper.data.background.BackgroundAccess(application, settings)
     val courseReminders = moe.nepnep.hduhelper.data.notifications.AndroidCourseReminders(application, this)
+    val widgets = moe.nepnep.hduhelper.widget.WidgetPublisher(application, this)
     init {
-        timetables.onChanged = courseReminders::reschedule
-        schedules.onChanged = scheduleReminders::reschedule
+        timetables.onChanged = { courseReminders.reschedule(); widgets.request() }
+        schedules.onChanged = { scheduleReminders.reschedule(); widgets.request() }
+        widgets.start()
+        auth.onSessionInvalidated(widgets::clearSnapshot)
         auth.onSessionInvalidated(campusCodes::clear)
         auth.onSessionInvalidated(timetables::clear)
         auth.onSessionInvalidated(grades::clear)

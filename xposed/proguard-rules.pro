@@ -3,3 +3,5 @@
 -keep class moe.nepnep.hduhelper.data.island.xposed.IslandModule { public <init>(); *; }
 -keep class moe.nepnep.hduhelper.data.background.xposed.BackgroundModule { public <init>(); *; }
 -dontwarn io.github.libxposed.**
+
+-keep class moe.nepnep.hduhelper.data.widget.xposed.WidgetCenterModule { public <init>(); *; }

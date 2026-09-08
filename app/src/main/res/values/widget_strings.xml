@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_quick_name">日程速览</string>
+    <string name="widget_quick_description">今天下一条安排</string>
+    <string name="widget_double_name">日程双行</string>
+    <string name="widget_double_description">今天接下来的两条安排</string>
+    <string name="widget_day_name">今日日程</string>
+    <string name="widget_day_description">今天接下来的四条安排</string>
+    <string name="widget_day_preview_title">今日日程</string>
+    <string name="widget_day_preview_content">今天 / 星期二\n\n08:05  大学英语\n10:00  高等数学\n13:30  读书分享\n15:20  实验课</string>
+    <string name="widget_double_preview_title">日程双行</string>
+    <string name="widget_double_preview_content">今天 / 星期二\n\n08:05  大学英语\n10:00  高等数学</string>
+    <string name="widget_quick_preview_title">日程速览</string>
+    <string name="widget_quick_preview_content">今天 / 星期二\n\n大学英语\n08:05–09:40 · 第三教学楼</string>
+    <string name="widget_today">今天</string>
+</resources>

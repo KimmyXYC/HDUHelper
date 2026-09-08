@@ -1,2 +1,3 @@
 moe.nepnep.hduhelper.data.island.xposed.IslandModule
 moe.nepnep.hduhelper.data.background.xposed.BackgroundModule
+moe.nepnep.hduhelper.data.widget.xposed.WidgetCenterModule

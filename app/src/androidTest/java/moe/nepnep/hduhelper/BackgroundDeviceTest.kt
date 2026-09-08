@@ -48,6 +48,7 @@ class BackgroundDeviceTest {
             XposedFramework.service.value?.let { service ->
                 putInt("background_framework_api", service.apiVersion)
                 putBoolean("background_system_scoped", service.scope.contains("system"))
+                putStringArrayList("xposed_scope", ArrayList(service.scope))
                 putBoolean("background_remote_supported", service.remote)
             }
         })

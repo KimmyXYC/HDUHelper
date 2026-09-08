@@ -7,6 +7,7 @@ import zipfile
 ENTRIES = {
     "moe.nepnep.hduhelper.data.island.xposed.IslandModule",
     "moe.nepnep.hduhelper.data.background.xposed.BackgroundModule",
+    "moe.nepnep.hduhelper.data.widget.xposed.WidgetCenterModule",
 }
 
 
@@ -41,10 +42,10 @@ def verify(app_path, module_path):
         assert entries == ENTRIES, "Unexpected module entry points"
         for entry in entries:
             assert "L" + entry.replace(".", "/") + ";" in module_classes, f"Missing or renamed entry: {entry}"
-        assert set(module.read("META-INF/xposed/scope.list").decode().splitlines()) == {"system", "com.android.systemui", "miui.systemui.plugin"}
+        assert set(module.read("META-INF/xposed/scope.list").decode().splitlines()) == {"system", "com.android.systemui", "miui.systemui.plugin", "com.miui.personalassistant"}
         assert b"minApiVersion=101" in module.read("META-INF/xposed/module.prop")
         assert not any(name.startswith("Lmoe/nepnep/hduhelper/data/auth/") for name in module_classes), "Companion includes authentication code"
-    print("APK split verified: main has no Xposed code; companion has both entry points and all scopes")
+    print("APK split verified: main has no Xposed code; companion has all entry points and all scopes")
 
 
 if __name__ == "__main__":

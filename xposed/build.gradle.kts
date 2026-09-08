@@ -55,6 +55,8 @@ androidComponents {
 
 dependencies {
     implementation(project(":xposed-contract"))
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
     implementation(libs.androidx.core.ktx)

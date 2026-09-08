@@ -33,6 +33,7 @@ class AuthEndpoints(
     val portal: HttpUrl = "https://i.hdu.edu.cn/".toHttpUrl(),
     val sso: HttpUrl = "https://sso.hdu.edu.cn/".toHttpUrl(),
     val campusCodeService: HttpUrl = "https://ymt.hdu.edu.cn/uias-h5/login".toHttpUrl(),
+    val neoService: HttpUrl = "https://api.hduhelp.com/hduhelp-neo/identity/login/sso".toHttpUrl(),
     val timetableService: HttpUrl = "http://newjw.hdu.edu.cn/sso/driot4login".toHttpUrl(),
 ) {
     val login: HttpUrl = sso.resolve("login")!!.newBuilder()
@@ -171,8 +172,13 @@ class HduAuthApi(private val endpoints: AuthEndpoints = AuthEndpoints()) : AuthS
             return result.body
         }
 
+        private fun validNeoService(service: HttpUrl): Boolean =
+            service.newBuilder().query(null).build() == endpoints.neoService &&
+                service.queryParameterNames == setOf("state") && service.queryParameterValues("state").size == 1 &&
+                service.queryParameter("state")?.matches(Regex("[A-Za-z0-9_-]{16,256}")) == true
+
         override suspend fun authorizeService(service: HttpUrl): String {
-            if (service != endpoints.campusCodeService && service != endpoints.timetableService) throw AuthException(AuthFailure.PROTOCOL, "不支持的学校服务")
+            if (service != endpoints.campusCodeService && service != endpoints.timetableService && !validNeoService(service)) throw AuthException(AuthFailure.PROTOCOL, "不支持的学校服务")
             val url = endpoints.sso.resolve("login")!!.newBuilder().addQueryParameter("service", service.toString()).build()
             val reply = request(Request.Builder().url(url).build(), allowSso = true, serviceCallback = service)
             val ticket = reply.url.queryParameter("ticket")
@@ -229,7 +235,11 @@ class HduAuthApi(private val endpoints: AuthEndpoints = AuthEndpoints()) : AuthS
 
     companion object {
         private fun sameCallback(url: HttpUrl, service: HttpUrl) =
-            url.newBuilder().query(null).fragment(null).build() == service && url.fragment == null && url.username.isEmpty() && url.password.isEmpty()
+            url.newBuilder().query(null).fragment(null).build() == service.newBuilder().query(null).build() &&
+                url.fragment == null && url.username.isEmpty() && url.password.isEmpty() &&
+                url.queryParameterValues("ticket").size == 1 &&
+                url.queryParameterNames == service.queryParameterNames + "ticket" &&
+                service.queryParameterNames.all { url.queryParameterValues(it) == service.queryParameterValues(it) }
 
         /** The official protected endpoint requires this per-request CSRF pair, including for GET requests. */
         @android.annotation.SuppressLint("WeakHash") // School wire protocol, never used for password storage.

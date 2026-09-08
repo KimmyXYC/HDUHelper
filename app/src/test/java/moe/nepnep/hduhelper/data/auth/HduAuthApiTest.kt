@@ -88,6 +88,15 @@ class HduAuthApiTest {
         expectSuspendFailure(AuthFailure.PROTOCOL) { api.create(emptyList()).authorizeService("https://example.com/login".toHttpUrl()) }
     }
 
+    @Test fun neoServicePreservesStateAndRejectsMismatches() = runBlocking {
+        val service = "https://api.hduhelp.com/hduhelp-neo/identity/login/sso?state=abcdefghijklmnop".toHttpUrl()
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", "$service&ticket=test-ticket").build())
+        assertEquals("test-ticket", api.create(emptyList()).authorizeService(service))
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", "https://api.hduhelp.com/hduhelp-neo/identity/login/sso?state=wrong&ticket=test-ticket").build())
+        expectSuspendFailure(AuthFailure.PROTOCOL) { api.create(emptyList()).authorizeService(service) }
+        assertEquals(2, server.requestCount)
+    }
+
     @Test fun serviceAuthorizationDetectsExpiredSsoAndRejectsOtherCallbacks() = runBlocking {
         server.enqueue(response(loginHtml))
         expectSuspendFailure(AuthFailure.EXPIRED) { api.create(emptyList()).authorizeService(endpoints.campusCodeService) }

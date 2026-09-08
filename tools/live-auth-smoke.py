@@ -19,10 +19,11 @@ def main():
     parser.add_argument('--campus-code', action='store_true', help='Verify native campus QR and a complete automatic refresh period')
     parser.add_argument('--timetable', action='store_true', help='Verify native academic SSO, timetable, calendar, clocks and UI')
     parser.add_argument('--grades', action='store_true', help='Verify native academic SSO, grade list, components and cache')
+    parser.add_argument('--electric', action='store_true', help='Verify Neo SSO and read-only electricity queries')
     args = parser.parse_args()
-    if sum((args.campus_code, args.timetable, args.grades)) > 1:
-        parser.error('Choose one of --campus-code, --timetable or --grades')
-    test_timeout = 600 if args.campus_code else 300 if args.timetable or args.grades else 180
+    if sum((args.campus_code, args.timetable, args.grades, args.electric)) > 1:
+        parser.error('Choose one of --campus-code, --timetable, --grades or --electric')
+    test_timeout = 600 if args.campus_code else 300 if args.timetable or args.grades or args.electric else 180
     adb = [args.adb, '-s', args.serial]
     account = input('数字杭电账号: ').strip()
     password = getpass.getpass('数字杭电密码（不回显）: ')
@@ -31,7 +32,7 @@ def main():
     name = 'hdu-auth-test-' + uuid.uuid4().hex
     port = subprocess.check_output(adb + ['forward', 'tcp:0', 'localabstract:' + name], text=True).strip()
     runner = subprocess.Popen(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'class',
-        ('moe.nepnep.hduhelper.LiveGradesTest' if args.grades else 'moe.nepnep.hduhelper.LiveTimetableTest' if args.timetable else 'moe.nepnep.hduhelper.LiveCampusCodeTest' if args.campus_code else 'moe.nepnep.hduhelper.LiveAuthTest'), '-e', 'liveAuthSocket', name,
+        ('moe.nepnep.hduhelper.LiveElectricTest' if args.electric else 'moe.nepnep.hduhelper.LiveGradesTest' if args.grades else 'moe.nepnep.hduhelper.LiveTimetableTest' if args.timetable else 'moe.nepnep.hduhelper.LiveCampusCodeTest' if args.campus_code else 'moe.nepnep.hduhelper.LiveAuthTest'), '-e', 'liveAuthSocket', name,
         'moe.nepnep.hduhelper.test/androidx.test.runner.AndroidJUnitRunner'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     lines = []

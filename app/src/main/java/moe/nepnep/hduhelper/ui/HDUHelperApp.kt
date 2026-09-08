@@ -90,6 +90,9 @@ fun HDUHelperApp(
     val context = LocalContext.current
     val gradesModel: GradesViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = GradesViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
+    val electricModel: ElectricViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = ElectricViewModel.factory((context.applicationContext as moe.nepnep.hduhelper.HDUHelperApplication).container))
+    val electricState by electricModel.state.collectAsStateWithLifecycle()
     val gradesState by gradesModel.state.collectAsStateWithLifecycle()
     val examsState by examsModel.state.collectAsStateWithLifecycle()
     val notificationModel: NotificationSettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
@@ -111,6 +114,7 @@ fun HDUHelperApp(
     var destination by rememberSaveable { mutableStateOf(AppDestination.SCHEDULE) }
     var loginReturnDestination by rememberSaveable { mutableStateOf(AppDestination.PROFILE) }
     var loginReturnToTimetableSettings by rememberSaveable { mutableStateOf(false) }
+    var loginReturnToElectric by rememberSaveable { mutableStateOf(false) }
     var loginReturnToGrades by rememberSaveable { mutableStateOf(false) }
     var loginReturnToExams by rememberSaveable { mutableStateOf(false) }
     val pageStateHolder = rememberSaveableStateHolder()
@@ -143,6 +147,10 @@ fun HDUHelperApp(
     LifecycleStartEffect(route) {
         gradesModel.setVisible(route == "grades")
         onStopOrDispose { gradesModel.setVisible(false) }
+    }
+    LifecycleStartEffect(route) {
+        electricModel.setVisible(route == "electric")
+        onStopOrDispose { electricModel.setVisible(false) }
     }
     LaunchedEffect(scheduleLink) {
         scheduleLink?.let { link ->
@@ -192,6 +200,7 @@ fun HDUHelperApp(
                     AppEvent.LoggedIn -> {
                         destination = loginReturnDestination
                         when {
+                            loginReturnToElectric && nav.popBackStack("electric", false) -> Unit
                             loginReturnToGrades && nav.popBackStack("grades", false) -> Unit
                             loginReturnToExams && nav.popBackStack("exams", false) -> Unit
                             loginReturnToTimetableSettings && nav.popBackStack("timetable_settings", false) -> Unit
@@ -199,7 +208,7 @@ fun HDUHelperApp(
                         }
                         loginReturnToTimetableSettings = false
                         loginReturnToExams = false
-                        loginReturnToGrades = false
+                        loginReturnToGrades = false; loginReturnToElectric = false
                     }
                     AppEvent.OpenVerification -> nav.navigate("verification") { launchSingleTop = true }
                     AppEvent.ClearWebSession -> VerificationCookies.clear()
@@ -215,7 +224,7 @@ fun HDUHelperApp(
         }
     }
     val back = {
-        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false; loginReturnToExams = false; loginReturnToGrades = false }
+        if (sensitive) { model.cancelLogin(); loginReturnToTimetableSettings = false; loginReturnToExams = false; loginReturnToGrades = false; loginReturnToElectric = false }
         nav.popBackStack()
         Unit
     }
@@ -274,7 +283,14 @@ fun HDUHelperApp(
                                 onVerify = { loginReturnDestination = AppDestination.CAMPUS_CODE; model.openVerification() }, modifier = Modifier.fillMaxSize())
                             AppDestination.APPLICATIONS -> ApplicationsScreen(Modifier.fillMaxSize(), onExams = {
                                 nav.navigate("exams") { launchSingleTop = true }
-                            }, onGrades = { nav.navigate("grades") { launchSingleTop = true } })
+                            }, onGrades = { nav.navigate("grades") { launchSingleTop = true } },
+                                onElectric = {
+                                    nav.navigate("electric") { launchSingleTop = true }
+                                    if (auth.profile == null && auth.status != moe.nepnep.hduhelper.data.auth.AuthStatus.LOADING) {
+                                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToElectric = true
+                                        model.openLogin(); nav.navigate("login") { launchSingleTop = true }
+                                    }
+                                })
                             AppDestination.PROFILE -> ProfileScreen(
                                 auth,
                                 onLogin = { loginReturnDestination = AppDestination.PROFILE; model.openLogin(); nav.navigate("login") { launchSingleTop = true } },
@@ -383,6 +399,20 @@ fun HDUHelperApp(
                             model.openVerification()
                         }, modifier = it)
                 }
+            }
+        }
+        composable("electric") {
+            SecondaryPage("电费查询", back) { padding ->
+                moe.nepnep.hduhelper.ui.screens.ElectricScreen(electricState, electricModel::refresh,
+                    electricModel::edit, electricModel::closeEditor, electricModel::building, electricModel::floor,
+                    electricModel::room, electricModel::bind, electricModel::unbind,
+                    onLogin = {
+                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToElectric = true
+                        model.openLogin(); nav.navigate("login") { launchSingleTop = true }
+                    }, onVerify = {
+                        loginReturnDestination = AppDestination.APPLICATIONS; loginReturnToElectric = true
+                        model.openVerification()
+                    }, modifier = padding)
             }
         }
         composable("about") { SecondaryPage("关于应用", back) { AboutScreen(it, updateState, updateModel::check) } }

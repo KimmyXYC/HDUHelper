@@ -68,15 +68,17 @@ class WidgetDeviceTest {
     @Test fun allThreeRemoteViewsInflateAtDefaultAndExpandedSizesInBothThemes() {
         val manager = AppWidgetManager.getInstance(context)
         val output = File(context.getExternalFilesDir(null), "widget-tests").apply { mkdirs() }
-        for (dark in listOf(false, true)) for (kind in 0..2) for (size in listOf("compact", "default", "expanded")) {
-            instrumentation.sendStatus(2, android.os.Bundle().apply { putString("widgetCase", "$kind/$dark/$size") })
+        for (isXiaomi in listOf(false, true)) for (dark in listOf(false, true)) for (kind in 0..2) for (size in listOf("compact", "default", "expanded")) {
+            instrumentation.sendStatus(2, android.os.Bundle().apply { putString("widgetCase", "$kind/$dark/$size/xiaomi=$isXiaomi") })
             onMain {
                 val info = manager.installedProviders.first { it.provider == ComponentName(context, providers[kind]) }
                 val host = AppWidgetHostView(context)
                 host.setAppWidget(0, info)
+                // Xiaomi cards fill their bounds without the standard Android host padding.
+                if (isXiaomi) host.setPadding(0, 0, 0, 0)
                 val heightDp = if (kind == 2) when (size) { "compact" -> 300; "expanded" -> 410; else -> 350 }
                     else when (size) { "compact" -> 140; "expanded" -> 230; else -> 170 }
-                host.updateAppWidget(widgets.renderPreview(kind, sample(), ScheduleBook(), now, dark, heightDp))
+                host.updateAppWidget(widgets.renderPreview(kind, sample(), ScheduleBook(), now, dark, heightDp, isXiaomi))
                 val density = context.resources.displayMetrics.density
                 val width = (if (kind == 0) when (size) { "compact" -> 150; "expanded" -> 230; else -> 170 }
                     else when (size) { "compact" -> 300; "expanded" -> 410; else -> 350 }) * density
@@ -106,7 +108,7 @@ class WidgetDeviceTest {
                 if (kind == 2) assertTrue(texts(host).any { it.contains("进行中") })
                 val bitmap = Bitmap.createBitmap(host.width, host.height, Bitmap.Config.ARGB_8888)
                 host.draw(Canvas(bitmap))
-                File(output, "widget-$kind-${if (dark) "dark" else "light"}-$size.png")
+                File(output, "widget-$kind-${if (dark) "dark" else "light"}-$size${if (isXiaomi) "-xiaomi" else ""}.png")
                     .outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bitmap.recycle()
             }

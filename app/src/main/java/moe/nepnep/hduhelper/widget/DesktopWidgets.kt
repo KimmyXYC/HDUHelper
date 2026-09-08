@@ -85,8 +85,8 @@ class DesktopWidgets(private val context: Context) {
     fun request() { requests.trySend(Unit) }
 
     suspend fun refresh() = mutex.withLock {
-        val instances = providers.flatMapIndexed { kind, provider ->
-            manager.getAppWidgetIds(ComponentName(context, provider)).map { it to kind % 3 }
+        val instances = providers.flatMapIndexed { providerIndex, provider ->
+            manager.getAppWidgetIds(ComponentName(context, provider)).map { it to providerIndex }
         }
         val alarm = context.getSystemService(AlarmManager::class.java)
         val alarmIntent = PendingIntent.getBroadcast(context, 7601,
@@ -120,11 +120,13 @@ class DesktopWidgets(private val context: Context) {
         val colors = Colors(if (dark) 0xff1a1a1a.toInt() else 0xfffafafa.toInt(),
             if (dark) 0xff292929.toInt() else 0xffeeeeee.toInt(),
             if (dark) Color.WHITE else 0xff191919.toInt(), if (dark) 0xffaaaaaa.toInt() else 0xff666666.toInt(), automatic = theme == ThemeMode.SYSTEM)
-        for ((id, kind) in instances) {
+        for ((id, providerIndex) in instances) {
+            val kind = providerIndex % 3
             if (runCatching { snapshotStore.load()?.revision }.getOrNull() != revision) { request(); return@withLock }
             val views = shell(date, data, colors)
             renderAgenda(views, kind, pending, items, now, data, colors, warning,
-                manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, if (kind == 2) 350 else 170))
+                manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, if (kind == 2) 350 else 170),
+                isXiaomi = providerIndex < 3)
             manager.updateAppWidget(id, views)
         }
         val next = (items.flatMap { listOfNotNull(it.start, it.end) } + date.plusDays(1).atStartOfDay())
@@ -133,13 +135,13 @@ class DesktopWidgets(private val context: Context) {
     }
 
     /** Synthetic device previews exercise the same RemoteViews actions without changing user data. */
-    internal fun renderPreview(kind: Int, data: TimetableData?, book: ScheduleBook, now: LocalDateTime, dark: Boolean, heightDp: Int = if (kind == 2) 350 else 170): RemoteViews {
+    internal fun renderPreview(kind: Int, data: TimetableData?, book: ScheduleBook, now: LocalDateTime, dark: Boolean, heightDp: Int = if (kind == 2) 350 else 170, isXiaomi: Boolean = false): RemoteViews {
         val colors = Colors(if (dark) 0xff1a1a1a.toInt() else 0xfffafafa.toInt(),
             if (dark) 0xff292929.toInt() else 0xffeeeeee.toInt(),
             if (dark) Color.WHITE else 0xff191919.toInt(), if (dark) 0xffaaaaaa.toInt() else 0xff666666.toInt())
         val views = shell(now.toLocalDate(), data, colors)
         val items = AgendaRules.items(book, data, now.toLocalDate())
-        renderAgenda(views, kind, AgendaRules.pending(items, now), items, now, data, colors, "", heightDp)
+        renderAgenda(views, kind, AgendaRules.pending(items, now), items, now, data, colors, "", heightDp, isXiaomi)
         return views
     }
 
@@ -181,7 +183,7 @@ class DesktopWidgets(private val context: Context) {
         removeAllViews(R.id.widget_content)
     }
     private fun renderAgenda(views: RemoteViews, kind: Int, pending: List<AgendaItem>, all: List<AgendaItem>, now: LocalDateTime,
-                             data: TimetableData?, colors: Colors, warning: String, heightDp: Int) {
+                             data: TimetableData?, colors: Colors, warning: String, heightDp: Int, isXiaomi: Boolean) {
         val limit = if (kind == 0) 1 else if (kind == 1) 2 else 4
         val shown = pending.take(limit)
         fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
@@ -193,6 +195,10 @@ class DesktopWidgets(private val context: Context) {
             views.setViewLayoutHeight(R.id.widget_icon, 16f, android.util.TypedValue.COMPLEX_UNIT_DIP)
             views.setViewLayoutWidth(R.id.widget_icon, 16f, android.util.TypedValue.COMPLEX_UNIT_DIP)
         } else if (kind == 1 || kind == 2) views.setViewPadding(android.R.id.background, dp(12), dp(8), dp(12), dp(8))
+        // Xiaomi hosts place these cards close to their rounded edges, even at compact sizes.
+        if (isXiaomi) {
+            views.setViewPadding(android.R.id.background, dp(16), dp(12), dp(16), dp(12))
+        }
         if (shown.isEmpty()) {
             val entry = RemoteViews(context.packageName, R.layout.widget_entry)
             entry.tint(R.id.widget_entry, colors.background, colors)

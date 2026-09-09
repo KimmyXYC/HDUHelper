@@ -1,6 +1,5 @@
 package moe.nepnep.hduhelper.data.background.xposed
 
-import android.app.PendingIntent
 import android.content.*
 import android.content.SharedPreferences
 import android.os.*
@@ -10,18 +9,18 @@ import io.github.libxposed.api.XposedModuleInterface.SystemServerStartingParam
 import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam
 import moe.nepnep.hduhelper.data.background.*
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicLong
 
-/** Only vendor alarm policy is changed; Android permission checks and force-stop semantics remain. */
+/** Owned reminder policies and module startup only; permissions and force-stop semantics remain. */
 @android.annotation.SuppressLint("PrivateApi", "DiscouragedPrivateApi")
 class BackgroundModule : XposedModule() {
     @Volatile private var enabled = false
     @Volatile private var ready = false
-    @Volatile private var appUid: Int? = null
+    @Volatile private var identity: BackgroundIdentity? = null
+    private var startup: ModuleStartupAdapter? = null
+    private var policies: ReminderPolicyAdapter? = null
     private var preferences: SharedPreferences? = null
     private var modulePath: String? = null
     private var host: Host? = null
-    private val exemptedAlarms = AtomicLong()
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, _ ->
         enabled = prefs.getBoolean(BackgroundWire.ENABLED, false)
         host?.register()
@@ -34,43 +33,26 @@ class BackgroundModule : XposedModule() {
     }
 
     override fun onSystemServerStarting(param: SystemServerStartingParam) {
-        android.util.Log.i("HDUBackground", "Installing vendor alarm adapter")
         modulePath = moduleApplicationInfo.sourceDir
+        runCatching {
+            ModuleStartupAdapter(param.classLoader).also {
+                it.install(this) { identity }
+                startup = it
+            }
+            android.util.Log.i("HDUBackground", "Module provider startup adapter ready")
+        }.onFailure { android.util.Log.w("HDUBackground", "Module provider startup adapter unavailable", it) }
         runCatching {
             preferences = getRemotePreferences(BackgroundWire.GROUP).also {
                 enabled = it.getBoolean(BackgroundWire.ENABLED, false)
                 it.registerOnSharedPreferenceChangeListener(listener)
             }
-            val loader = param.classLoader
-            val type = Class.forName("com.android.server.alarm.AlarmManagerServiceStubImpl", false, loader)
-            val alarmType = Class.forName("com.android.server.alarm.Alarm", false, loader)
-            val operation = alarmType.getDeclaredField("operation").apply { isAccessible = true }
-            val getIntent = PendingIntent::class.java.getDeclaredMethod("getIntent").apply { isAccessible = true }
-            val signatures = listOf(
-                Triple("checkAlarmIsAllowedSend", arrayOf(Context::class.java, alarmType), true),
-                Triple("alignAlarmLocked", arrayOf(alarmType), false),
-                Triple("adjustAlarmLocked", arrayOf(alarmType), false),
-                Triple("isExemptFromSsru", arrayOf(alarmType), true),
-            )
-            // Resolve every required member before installing anything. Partial installs stay inert.
-            val methods = signatures.map { (name, parameters, _) ->
-                type.getDeclaredMethod(name, *parameters).also { check(it.returnType == Boolean::class.javaPrimitiveType) }
-            }
-            methods.zip(signatures).forEach { (method, spec) ->
-                hook(method).intercept { chain ->
-                    val ownReminder = ready && enabled && runCatching {
-                        val alarm = chain.args.lastOrNull() ?: return@runCatching false
-                        val pending = operation.get(alarm) as? PendingIntent ?: return@runCatching false
-                        val intent = getIntent.invoke(pending) as? Intent
-                        matchesReminder(pending.creatorPackage, pending.creatorUid, appUid, intent?.action) &&
-                            intent?.component?.packageName == BackgroundWire.APP
-                    }.getOrDefault(false)
-                    if (ownReminder) { exemptedAlarms.incrementAndGet(); spec.third } else chain.proceed()
-                }
+            ReminderPolicyAdapter(param.classLoader).also {
+                it.install(this, { identity }, { ready && enabled })
+                policies = it
             }
             ready = true
-            android.util.Log.i("HDUBackground", "Vendor alarm adapter ready")
-        }.onFailure { android.util.Log.w("HDUBackground", "Vendor alarm adapter unavailable", it) }
+            android.util.Log.i("HDUBackground", "Reminder startup, idle and vendor alarm adapters ready")
+        }.onFailure { android.util.Log.w("HDUBackground", "Reminder adapters unavailable", it) }
         // SystemServer has prepared its Looper before this callback. Run after boot services return.
         Handler(Looper.getMainLooper()).post { startHost() }
     }
@@ -81,33 +63,46 @@ class BackgroundModule : XposedModule() {
             val activityThread = Class.forName("android.app.ActivityThread")
             val thread = activityThread.getDeclaredMethod("currentActivityThread").invoke(null)
             val context = activityThread.getDeclaredMethod("getSystemContext").invoke(thread) as Context
-            appUid = context.packageManager.getPackageUid(BackgroundWire.APP, 0)
+            refreshIdentity(context)
             host = Host(context).also { it.registerReceiver() }
             android.util.Log.i("HDUBackground", "Background bridge ready")
         }.onFailure { android.util.Log.w("HDUBackground", "Background bridge unavailable", it) }
+    }
+
+    private fun refreshIdentity(context: Context) {
+        identity = runCatching {
+            val pm = context.packageManager
+            check(pm.checkSignatures(BackgroundWire.APP, ModuleWire.PACKAGE) == android.content.pm.PackageManager.SIGNATURE_MATCH)
+            BackgroundIdentity(pm.getPackageUid(BackgroundWire.APP, 0), pm.getPackageUid(ModuleWire.PACKAGE, 0))
+        }.getOrNull()
     }
 
     private inner class Host(private val context: Context) {
         private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "hdu-background-bridge").apply { isDaemon = true } }
         private val binder = object : Binder() {
             override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-                check(Binder.getCallingUid() == appUid) { "Only HDUHelper may query its background host" }
+                check(Binder.getCallingUid() == identity?.appUid) { "Only HDUHelper may query its background host" }
                 data.enforceInterface(BackgroundWire.DESCRIPTOR)
                 require(code == BackgroundWire.STATUS && data.dataAvail() == 0)
-                val identity = Binder.clearCallingIdentity()
+                val callingIdentity = Binder.clearCallingIdentity()
                 try {
-                    val status = BackgroundDetector.read(context, requireNotNull(appUid))
+                    val status = BackgroundDetector.read(context, requireNotNull(identity).appUid)
                     requireNotNull(reply).writeNoException()
                     reply.writeBundle(Bundle().apply {
                         putInt("version", BackgroundWire.VERSION)
                         putString("modulePath", modulePath)
                         putBoolean("ready", ready)
                         putBoolean("enabled", ready && enabled)
-                        putLong("exemptions", exemptedAlarms.get())
+                        putInt("policyVersion", BackgroundWire.POLICY_VERSION)
+                        putBoolean("moduleStartupReady", startup != null)
+                        putLong("moduleConnections", startup?.connections?.get() ?: 0)
+                        putLong("exemptions", policies?.exemptions?.get() ?: 0)
+                        putLong("reminderStarts", policies?.starts?.get() ?: 0)
+                        putLong("reminderThaws", policies?.thaws?.get() ?: 0)
                         putString("autostart", status.autostart.name)
                         putString("vendorBattery", status.vendorBattery.name)
                     })
-                } finally { Binder.restoreCallingIdentity(identity) }
+                } finally { Binder.restoreCallingIdentity(callingIdentity) }
                 return true
             }
         }
@@ -116,6 +111,16 @@ class BackgroundModule : XposedModule() {
             context.registerReceiver(object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) { register() }
             }, IntentFilter(BackgroundWire.REQUEST), "${BackgroundWire.APP}.permission.REQUEST_BACKGROUND_HOST", null, Context.RECEIVER_EXPORTED)
+            context.registerReceiver(object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    if (intent.data?.schemeSpecificPart in setOf(BackgroundWire.APP, ModuleWire.PACKAGE)) refreshIdentity(context)
+                }
+            }, IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            }, Context.RECEIVER_NOT_EXPORTED)
             // Do not start the app at boot just to announce availability; it requests a host when opened.
         }
 

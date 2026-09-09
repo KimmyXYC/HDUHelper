@@ -15,7 +15,7 @@
 
 首次迁移需关闭旧“杭电助手”模块，安装并启用“杭电助手 Xposed”，选定作用域后重启一次。后续只更新主应用无需重启，模块代码或作用域改变才需要重启宿主。模块未安装或未激活时，主应用使用普通提醒。
 
-若 LSPosed 显示模块已生效但通知设置缺少两个 Xposed 开关，检查独立“杭电助手 Xposed”的自启动与关联启动权限。HyperOS 可拒绝主应用拉起模块的状态 Provider，日志表现为 `WakePathChecker: MIUILOG-AutoStart ... Reject`、`ModuleBridgeProvider` 和 `Failed to find provider info`；这不等于 Hook 未加载。允许模块启动后返回通知设置重新检测。主应用在模块已安装但状态不可用时显示“Xposed 模块连接”及模块应用设置入口。
+若 LSPosed 显示模块已生效但通知设置缺少两个 Xposed 开关，检查独立“杭电助手 Xposed”的自启动与关联启动权限。HyperOS 可拒绝主应用拉起模块的状态 Provider，日志表现为 `WakePathChecker: MIUILOG-AutoStart ... Reject`、`ModuleBridgeProvider` 和 `Failed to find provider info`；这不等于 Hook 未加载。模块 1.2.0 起，系统框架 Hook 会校验两 APK 签名、调用方 UID 和目标 Provider，只放行主应用到模块的这条连接，不依赖后台提醒增强开关，也不修改自启动设置。更新模块并重启后可保持模块自启动关闭；未加载系统 Hook 时仍可手动允许模块启动并返回通知设置重新检测。主应用在模块已安装但状态不可用时显示“Xposed 模块连接”及模块应用设置入口。
 
 ## 电费查询验证
 
@@ -69,7 +69,11 @@ adb shell am instrument -w \
 
 通知设置分别检测自启动、Android 电池优化豁免和小米省电策略，返回设置页时刷新。“电池优化”弹窗提供两个系统入口。小米自启动只读查询 AppOps 10008；省电策略只读查询 PowerKeeper `userTable` 的本包、本用户 `bgControl`，不调用可能修改设置的 `getPowerSaveAppConfigure`。权限不足、缺少记录或未知值显示“无法检测”；支持的系统框架桥接可提供特权只读查询，结果仍为系统真实设置。
 
-“Xposed 后台提醒增强”默认关闭，独立于超级岛。启用需要增加 LSPosed 的 `system` 系统框架作用域并重启设备；现代 API 的 `android` 是普通系统包，不能替代 `system`。独立模块持有的 API 101 服务连接由两项功能共用，开关经远程偏好存储同步；系统端仅适配 HyperOS `AlarmManagerServiceStubImpl` 的投递、对齐和 SSRU 限制，检查 PendingIntent 创建包名、UID、目标包和课程/日程 action 后才豁免。所有必需签名匹配且真实通道确认后才报告就绪。关闭后恢复原始判断，不修改全局省电设置，不提供强行停止后的自动拉起，也不持有常驻保活服务。
+“Xposed 后台提醒增强”默认关闭，独立于超级岛。启用需要增加 LSPosed 的 `system` 系统框架作用域并重启设备；现代 API 的 `android` 是普通系统包，不能替代 `system`。独立模块持有的 API 101 服务连接由两项功能共用，开关经远程偏好存储同步；系统端适配 HyperOS `AlarmManagerServiceStubImpl` 的投递、对齐和 SSRU 限制，以及 Android 闹钟的待机桶、Doze 配额、电池节能和后台限制。每次匹配都要求同签名的主应用、创建者 UID、不可变广播 PendingIntent、精确对应的 Receiver 和课程/日程 action；考试使用课程提醒通道。仅对这些闹钟清除额外的策略延迟，保留请求触发时间和其他应用策略。
+
+主程序未运行时，仅在真实提醒投递及系统提醒重建广播中放行启动；其他广播及 Android 权限、组件导出、用户状态检查仍正常执行。已冻结的进程只在自己提醒到期时经系统闹钟解冻通道临时唤醒，继续使用 Android 的闹钟唤醒锁和短时执行豁免。所有适配点解析、Hook 安装及真实通道确认后才报告就绪；一处安装失败会撤销该组 Hook。关闭增强后恢复原始判断并由主应用重新调度提醒，不修改自启动或永久电池优化名单，不提供强行停止后的自动拉起，也不持有常驻保活服务。
+
+上述适配核对了主用户的 HyperOS `OS3.0.305.0.WOCCNXM`（API 36）系统 DEX。通知与精确闹钟权限仍需开启，课程/考试数据需已缓存。系统超级省电拒绝解冻、关机、强行停止或模块未加载不属于准时保证范围。ROM 更新后需重新验证适配点及锁屏投递，不能仅以 LSPosed 显示激活认定提醒增强可用。
 
 `BackgroundStatusTest` 覆盖权限映射与提醒身份匹配；`BackgroundDeviceTest` 默认执行只读状态和伪造通道拒绝测试。添加 `-e backgroundEnabled true` 才验证真实 Hook、远程开关、课程/日程闹钟实际命中与无关 action 不受影响；测试使用无效事件令牌，撤销所有测试闹钟并恢复开关。锁屏与系统回收后的真实通知仍需课程、日程回归测试验证。
 
@@ -77,7 +81,7 @@ adb shell am instrument -w \
 
 应用会核对系统框架中已加载的独立模块 APK 路径；覆盖安装模块后即使旧模块仍响应，也必须显示需要重启。升级前后可分别用 `BackgroundDeviceTest.updatedModuleApkRequiresSystemServerRestart`（参数 `-e backgroundUpdated true`）和 `loadedHostReportsRealPermissionsAndSwitchControlsReminderAlarmExemptions`（参数 `-e backgroundEnabled true`）验证更新提示、配置回执和真实闹钟行为。后者通过状态流等待配置生效，不轮询刷新，并恢复原有开关。
 
-`BackgroundAlarmLifecycleDeviceTest` 用 `-e backgroundLifecycle true -e enhanced false`（或 `true`）运行 `prepareColdLockedReminders`，准备 50 秒后的普通课程/日程提醒并锁屏；结束 instrumentation 后用 `adb shell am kill moe.nepnep.hduhelper` 回收后台进程，等到目标时间后 15 秒，再运行 `verifyPreviouslyDeliveredColdRemindersAndRestore`。它要求通知早于验证启动且在目标时间 10 秒内发布，避免冷启动补发造成假通过。中断时以 `-e backgroundRecovery true` 运行 `restoreInterruptedColdReminderProbe`，按唯一标识清理测试数据并恢复设置。不要用强行停止替代进程回收。
+`BackgroundAlarmLifecycleDeviceTest` 用 `-e backgroundLifecycle true -e enhanced false`（或 `true`）运行 `prepareColdLockedReminders`，准备 50 秒后的普通课程/日程提醒、再隔 35 秒的考试/第二条日程提醒并锁屏；结束 instrumentation 后用 `adb shell am kill moe.nepnep.hduhelper` 回收后台进程，等到第二个目标时间后 15 秒，再运行 `verifyPreviouslyDeliveredColdRemindersAndRestore`。它要求四条通知早于验证启动且各自在目标时间 10 秒内发布，避免冷启动补发造成假通过。中断时以 `-e backgroundRecovery true` 运行 `restoreInterruptedColdReminderProbe`，按唯一标识清理测试数据并恢复设置。不要用强行停止替代进程回收。添加 `-e restrictedBackground true` 会要求主应用自启动已关闭且不在电池优化豁免名单；测试本身不修改这些系统设置。外部测试流程需记录并恢复主应用/模块 AppOps 10008 和 deviceidle 白名单，在准备后回收进程、强制 Doze，再检查两批通知，防止第一批成功掩盖连续提醒的休眠配额延迟。独立模块也应在自启动关闭、进程不存在时运行 `XposedConnectionDeviceTest`（`-e xposedConnection true`），确认冷启动读取框架状态成功。
 
 `CampusCodeRecoveryTest` 覆盖网络/认证恢复顺序、有限重试、合并和取消。`CampusCodeNetworkDeviceTest` 仅在 `-e campusNetwork true` 时运行：复用已有登录状态，停留一码通页面关闭再恢复网络，检查二维码自行恢复；Wi-Fi 和移动数据恢复为测试前状态。真实二维码仅在受保护窗口及内存中使用，不截图、不输出认证信息。
 
@@ -86,6 +90,10 @@ adb shell am instrument -w \
 普通模式在配置时间提醒一次。另行安装现代 Xposed API 101 模块 APK：在 LSPosed 启用“杭电助手 Xposed”，勾选 `com.android.systemui`、`miui.systemui.plugin` 并重启作用域，再返回“通知设置”。仅 HyperOS 3 及以上、模块激活且作用域授权时显示“开启课程表超级岛”，默认关闭；授权后 Hook 尚未加载时显示禁用提示。开关打开且能力检查通过时，用小米原生模板 9 替代普通提醒；否则回退普通通知，不重复响铃。已移除 Android 标准 Live Updates 及其权限，旧开关不会自动迁移为开启超级岛。
 
 超级岛仅覆盖已开启的上课/下课提醒窗口：课前或下课前倒计时，到目标时刻转为正计时，60 秒后移除。展开态显示课程名、起止时间、教室和操作按钮；胶囊显示教室及目标时间。窗口内的有界 `specialUse` 前台服务协助边界切换，退出后释放唤醒锁。取消记录及提醒去重仍使用不参与备份的散列事件日志。普通通知的精确闹钟、后台运行与通知权限要求保持不变。
+
+本机在 2026-09-09 完成了模块自启动关闭时的冷连接、两次主进程退出后的深度 Doze 投递、增强开关启停及界面回归。课程、考试和两条日程通知均在目标时间后 10 秒内发布；首批课程/日程分别延迟 3076/3354 毫秒。此结果针对上述 ROM，不等同于所有省电模式的实时保证。
+
+实机测试需解锁屏幕。MIUI 可能以 AppOps 10021 阻止测试 Activity 启动；保存原模式、临时允许后执行界面用例，结束后恢复。若 `force-idle deep` 因临近的唤醒闹钟停在 `QUICK_DOZE_DELAY`，测试可保存并临时设置 `device_idle_constants` 的 `min_time_to_alarm=0`，结束后恢复原值；写入需要开启 USB 调试（安全设置）。生产 Hook 不修改这些全局参数。厂商极限省电和主动冻结场景尚未完成实机覆盖。
 
 “上课静音”只改变铃声/通知模式，不改变媒体、闹钟或主动开启勿扰。SystemUI 内的模块保存原声音模式及不含课程内容的到期记录，实际下课时恢复；超级岛消失或杭电助手进程退出不移除恢复任务，不另发静音控制通知。用户通过系统改变声音模式会取消模块接管；原本静音不接管。重叠课程按各自结束时间合并恢复任务。调用方校验限制了跨进程注册和声音操作，权限 Hook 仅放行杭电助手包名。参考项目未提供根目录许可证，未直接搬运其实现，模板按小米公开协议独立构建。
 

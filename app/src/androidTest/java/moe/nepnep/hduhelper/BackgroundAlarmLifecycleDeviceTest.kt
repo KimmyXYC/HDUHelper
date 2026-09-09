@@ -12,7 +12,11 @@ import java.time.LocalDateTime
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
+import moe.nepnep.hduhelper.data.background.BackgroundDetector
+import moe.nepnep.hduhelper.data.background.PermissionState
 import moe.nepnep.hduhelper.data.background.BackgroundHookState
+import moe.nepnep.hduhelper.data.background.BackgroundWire
+import moe.nepnep.hduhelper.data.background.BackgroundHostConnection
 import moe.nepnep.hduhelper.data.notifications.*
 import moe.nepnep.hduhelper.data.schedule.*
 import moe.nepnep.hduhelper.data.timetable.*
@@ -27,7 +31,7 @@ class BackgroundAlarmLifecycleDeviceTest {
     private val context = instrumentation.targetContext
     private val container get() = (context.applicationContext as HDUHelperApplication).container
     private val checkpoint get() = context.cacheDir.resolve("background-alarm-device-recovery.json")
-    private val temporarySettings = NotificationSettings(island = false, beforeClass = true, afterClass = false, beforeMinutes = 0)
+    private val temporarySettings = NotificationSettings(island = false, beforeClass = true, afterClass = false, beforeMinutes = 0, beforeExam = true, examMinutes = 0)
 
     @Test fun prepareColdLockedReminders(): Unit = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("backgroundLifecycle") == "true")
@@ -42,9 +46,15 @@ class BackgroundAlarmLifecycleDeviceTest {
         val original = requireNotNull(store.load(identity.account, latest.catalog.current))
         val prefs = container.settings.state.value.notifications
         val enhanced = InstrumentationRegistry.getArguments().getString("enhanced") == "true"
+        if (InstrumentationRegistry.getArguments().getString("restrictedBackground") == "true") {
+            assertTrue(enhanced)
+            assertEquals(PermissionState.RESTRICTED, BackgroundDetector.read(context).autostart)
+            assertFalse(context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName))
+        }
         val start = LocalDateTime.now(campusZone).plusSeconds(50).withNano(0)
         val end = start.plusMinutes(2)
-        val until = end.atZone(campusZone).toInstant().toEpochMilli()
+        val secondStart = start.plusSeconds(35)
+        val until = secondStart.plusMinutes(2).atZone(campusZone).toInstant().toEpochMilli()
         assumeTrue(start.toLocalDate() == end.toLocalDate())
         assumeTrue(CourseReminderRules.reminders(original, prefs, System.currentTimeMillis()).none { it.begins < until })
         val day = start.toLocalDate()
@@ -55,6 +65,9 @@ class BackgroundAlarmLifecycleDeviceTest {
         val courseId = "background-course-$suffix"
         val title = "后台课程测试 $suffix"
         val scheduleTitle = "后台日程测试 $suffix"
+        val secondTitle = "连续日程测试 $suffix"
+        val examId = "background-exam-$suffix"
+        val examTitle = "后台考试测试 $suffix"
         val record = JSONObject().put("accountKey", CourseReminderRules.hash(identity.account))
             .put("year", original.term.year).put("term", original.term.code).put("courseId", courseId).put("campus", campus)
             .put("addedWeek", if (existingWeek == null) week.week else -1).put("weekStart", week.start)
@@ -62,6 +75,8 @@ class BackgroundAlarmLifecycleDeviceTest {
             .put("originalEnhancement", container.settings.state.value.backgroundEnhancement).put("enhanced", enhanced)
             .put("title", title).put("scheduleTitle", scheduleTitle).put("pid", Process.myPid())
             .put("at", start.atZone(campusZone).toInstant().toEpochMilli())
+            .put("secondAt", secondStart.atZone(campusZone).toInstant().toEpochMilli())
+            .put("secondTitle", secondTitle).put("examId", examId).put("examTitle", examTitle)
         checkpoint.outputStream().use { it.write(record.toString().toByteArray()); it.fd.sync() }
         try {
             container.settings.setBackgroundEnhancement(enhanced)
@@ -73,16 +88,26 @@ class BackgroundAlarmLifecycleDeviceTest {
                 weekday = day.dayOfWeek.value, sections = listOf(1), weeks = listOf(week.week), rawWeeks = week.week.toString(), rawSections = "1")
             store.save(original.copy(meetings = original.meetings + meeting,
                 weeks = if (existingWeek == null) original.weeks + week else original.weeks,
-                clocks = original.clocks + CampusClock(campus, "测试校区", listOf(CampusPeriod(1, start.toLocalTime().toString(), end.toLocalTime().toString(), "测试")))))
+                clocks = original.clocks + CampusClock(campus, "测试校区", listOf(CampusPeriod(1, start.toLocalTime().toString(), end.toLocalTime().toString(), "测试"))),
+                exams = original.exams.copy(items = original.exams.items + ExamArrangement(examId, examTitle,
+                    start = secondStart.toString(), end = secondStart.plusMinutes(2).toString(), location = "测试考场"))))
             val event = ScheduleEvent(scheduleTitle, start = start.toString(), end = end.toString(), reminderMinutes = 0)
             container.schedules.save(ScheduleEditor(null, null, event), event)
+            val second = ScheduleEvent(secondTitle, start = secondStart.toString(), end = secondStart.plusMinutes(2).toString(), reminderMinutes = 0)
+            container.schedules.save(ScheduleEditor(null, null, second), second)
             container.settings.setNotifications(temporarySettings)
             container.courseReminders.reconcileSafely()
             container.scheduleReminders.reconcile()
+            BackgroundHostConnection.binder.value?.let { host ->
+                val hook = BackgroundWire.status(host)
+                record.put("startsBefore", hook.getLong("reminderStarts"))
+                    .put("thawsBefore", hook.getLong("reminderThaws"))
+                checkpoint.outputStream().use { it.write(record.toString().toByteArray()); it.fd.sync() }
+            }
             assertTrue(instrumentation.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN))
             withTimeout(5_000) { while (context.getSystemService(PowerManager::class.java).isInteractive) delay(100) }
             instrumentation.sendStatus(0, Bundle().apply {
-                putString("stream", "\nCold alarm probe prepared: enhanced=$enhanced, pid=${Process.myPid()}, target=${record.getLong("at")}, interactive=false\n")
+                putString("stream", "\nCold alarm probe prepared: enhanced=$enhanced, pid=${Process.myPid()}, target=${record.getLong("at")}, second=${record.getLong("secondAt")}, interactive=false\n")
             })
         } catch (e: Throwable) { withContext(NonCancellable) { restore() }; throw e }
     }
@@ -100,7 +125,28 @@ class BackgroundAlarmLifecycleDeviceTest {
             for (notice in listOf(course, schedule)) {
                 assertTrue("Reminder must precede verification, not be replayed by the test launch", notice.postTime in at..(at + 10_000))
             }
+            val secondAt = record.getLong("secondAt")
+            val second = notices.single { it.notification.extras.getString(Notification.EXTRA_TITLE) == record.getString("secondTitle") }
+            val exam = notices.single { it.notification.extras.getString(Notification.EXTRA_TITLE)?.startsWith(record.getString("examTitle")) == true }
+            for (notice in listOf(second, exam)) {
+                assertTrue("Sequential reminder was delayed by idle quota", notice.postTime in secondAt..(secondAt + 10_000))
+            }
+            if (record.getBoolean("enhanced")) withTimeout(5_000) {
+                while (BackgroundHostConnection.binder.value == null) {
+                    container.background.refreshNow()
+                    delay(100)
+                }
+            }
+            val hostStatus = BackgroundHostConnection.binder.value?.let { BackgroundWire.status(it) }
+            if (record.getBoolean("enhanced")) {
+                assertNotNull(hostStatus)
+                assertTrue("The real reminder startup gate must have been used",
+                    hostStatus!!.getLong("reminderStarts") > record.optLong("startsBefore"))
+            }
             instrumentation.sendStatus(0, Bundle().apply {
+                putLong("reminder_starts", hostStatus?.getLong("reminderStarts") ?: 0)
+                putLong("reminder_thaws", hostStatus?.getLong("reminderThaws") ?: 0)
+                putString("sequential_delays", "exam=${exam.postTime - secondAt}ms, schedule=${second.postTime - secondAt}ms")
                 putString("stream", "\nCold reminders delivered: enhanced=${record.getBoolean("enhanced")}, courseDelay=${course.postTime - at}ms, scheduleDelay=${schedule.postTime - at}ms\n")
             })
         } finally { withContext(NonCancellable) { restore() } }
@@ -121,10 +167,11 @@ class BackgroundAlarmLifecycleDeviceTest {
         store.load(account, AcademicTerm(record.getString("year"), record.getString("term")))?.let { current ->
             store.save(current.copy(meetings = current.meetings.filterNot { it.id == record.getString("courseId") },
                 clocks = current.clocks.filterNot { it.id == record.getString("campus") },
-                weeks = current.weeks.filterNot { it.week == record.getInt("addedWeek") && it.start == record.getString("weekStart") }))
+                weeks = current.weeks.filterNot { it.week == record.getInt("addedWeek") && it.start == record.getString("weekStart") },
+                exams = current.exams.copy(items = current.exams.items.filterNot { it.id == record.optString("examId") })))
         }
         container.schedules.load()
-        container.schedules.state.value.book.series.filter { it.event.title == record.getString("scheduleTitle") }.forEach { container.schedules.delete(it.id, null) }
+        container.schedules.state.value.book.series.filter { it.event.title in setOf(record.getString("scheduleTitle"), record.optString("secondTitle")) }.forEach { container.schedules.delete(it.id, null) }
         if (container.settings.state.value.notifications == temporarySettings) {
             container.settings.setNotifications(Json.decodeFromString<NotificationSettings>(record.getString("preferences")))
         }
@@ -134,7 +181,8 @@ class BackgroundAlarmLifecycleDeviceTest {
         val notifications = context.getSystemService(NotificationManager::class.java)
         notifications.activeNotifications.filter {
             val title = it.notification.extras.getString(Notification.EXTRA_TITLE)
-            title?.startsWith(record.getString("title")) == true || title == record.getString("scheduleTitle")
+            title?.startsWith(record.getString("title")) == true || title == record.getString("scheduleTitle") ||
+                title == record.optString("secondTitle") || title?.startsWith(record.optString("examTitle", "background-exam-missing")) == true
         }.forEach { notifications.cancel(it.tag, it.id) }
         container.background.refreshNow()
         container.courseReminders.reconcileSafely()

@@ -130,7 +130,7 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
     Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp).testTag("notification_settings"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (moduleConnectionIssue != null) Card(Modifier.fillMaxWidth()) {
             ArrowPreference("Xposed 模块连接", summary = when (moduleConnectionIssue) {
-                XposedFramework.ConnectionIssue.UNAVAILABLE -> "无法连接杭电助手 Xposed。请允许模块自启动和关联启动，然后返回重试"
+                XposedFramework.ConnectionIssue.UNAVAILABLE -> "无法连接杭电助手 Xposed。请检查系统框架作用域并重启，或允许模块自启动后重试"
                 XposedFramework.ConnectionIssue.INACTIVE -> "尚未收到框架连接。请在 LSPosed 中启用杭电助手 Xposed 并检查作用域"
             }, onClick = onModuleSettings, modifier = Modifier.testTag("notify_module_connection"))
         }

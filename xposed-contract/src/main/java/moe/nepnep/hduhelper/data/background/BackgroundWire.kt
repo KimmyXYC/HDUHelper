@@ -10,6 +10,7 @@ object BackgroundWire {
     const val REQUEST = "$APP.BACKGROUND_HOST_REQUEST"
     const val DESCRIPTOR = "$APP.BackgroundHost.v1"
     const val VERSION = 1
+    const val POLICY_VERSION = 2
     const val GROUP = "background"
     const val ENABLED = "enabled"
     const val STATUS = IBinder.FIRST_CALL_TRANSACTION

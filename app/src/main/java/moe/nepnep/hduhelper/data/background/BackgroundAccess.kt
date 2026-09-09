@@ -61,7 +61,8 @@ class BackgroundAccess(private val context: Context, private val settings: Setti
                 when {
                     !synced -> BackgroundHookState.SYNC_FAILED
                     response == null || !currentHost -> BackgroundHookState.RESTART_REQUIRED
-                    response?.getInt("version") != BackgroundWire.VERSION || response?.getBoolean("ready") != true -> BackgroundHookState.UNSUPPORTED
+                    response?.getInt("version") != BackgroundWire.VERSION ||
+                        response.getInt("policyVersion") != BackgroundWire.POLICY_VERSION || response.getBoolean("ready") != true -> BackgroundHookState.UNSUPPORTED
                     response?.getBoolean("enabled") != desired -> BackgroundHookState.SYNC_FAILED
                     desired -> BackgroundHookState.ACTIVE
                     else -> BackgroundHookState.READY

@@ -5,7 +5,7 @@ enum class PermissionState { ALLOWED, RESTRICTED, UNKNOWN, UNSUPPORTED }
 enum class BackgroundHookState(val label: String) {
     INACTIVE("Xposed 模块未激活"), SCOPE_REQUIRED("请在 LSPosed 中勾选系统框架"),
     RESTART_REQUIRED("请重启设备以加载系统框架作用域"), UNSUPPORTED("当前系统不支持提醒增强"),
-    READY("已就绪"), ACTIVE("已生效"), SYNC_FAILED("配置同步失败，请重试"),
+    READY("已就绪"), ACTIVE("已生效，无需开启自启动或关闭电池优化"), SYNC_FAILED("配置同步失败，请重试"),
 }
 
 data class BackgroundStatus(

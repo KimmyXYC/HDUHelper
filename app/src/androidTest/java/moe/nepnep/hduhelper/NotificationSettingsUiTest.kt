@@ -137,6 +137,31 @@ class NotificationSettingsUiTest {
         compose.onNodeWithTag("notify_island").assertIsDisplayed()
     }
 
+    @Test fun installedModuleShowsBothNotificationOptions() {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("xposedConnection") == "true")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val container = (context.applicationContext as HDUHelperApplication).container
+        val background = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) {
+            var value = container.background.refreshNow()
+            while (!value.canEnable) { kotlinx.coroutines.delay(100); value = container.background.refreshNow() }
+            value
+        } }
+        val island = kotlinx.coroutines.runBlocking { container.island.refreshNow() }
+        assertTrue("Installed module must expose the island scope", island.visible)
+        val status = container.courseReminders.permissionStatus().copy(island = island)
+        val settings = container.settings.state.value
+        compose.setContent {
+            HDUHelperTheme {
+                NotificationSettingsScreen(settings.notifications, status, {}, {}, {},
+                    Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface), background = background,
+                    backgroundEnhancement = settings.backgroundEnhancement)
+            }
+        }
+        compose.onNodeWithTag("notify_background_enhancement").assertIsDisplayed()
+        compose.onNodeWithTag("notify_island").assertIsDisplayed()
+        capture("notification-real-module.png")
+    }
+
     private fun capture(name: String, tag: String? = null) {
         val image = (if (tag == null) compose.onRoot() else compose.onNodeWithTag(tag)).captureToImage().asAndroidBitmap()
         InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.resolve(name).outputStream().use {

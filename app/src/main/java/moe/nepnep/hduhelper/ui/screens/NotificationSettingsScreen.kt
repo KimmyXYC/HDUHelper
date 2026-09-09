@@ -46,6 +46,7 @@ fun NotificationSettingsPage(settings: NotificationSettings, status: CourseNotif
     onBackgroundEnhancement: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val moduleConnectionIssue by XposedFramework.connectionIssue.collectAsState()
     val scope = rememberCoroutineScope()
     var testing by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onRefresh() }
@@ -76,6 +77,10 @@ fun NotificationSettingsPage(settings: NotificationSettings, status: CourseNotif
             .putExtra(Settings.EXTRA_CHANNEL_ID, AndroidCourseReminders.CHANNEL))
     }, onExact = { open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, "package:${context.packageName}".toUri())) },
         modifier = modifier,
+        moduleConnectionIssue = moduleConnectionIssue,
+        onModuleSettings = {
+            open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${ModuleWire.PACKAGE}".toUri()))
+        },
         background = background, backgroundEnhancement = backgroundEnhancement, onBackgroundEnhancement = onBackgroundEnhancement,
         onAutostart = { open(Intent("miui.intent.action.OP_AUTO_START").setPackage("com.miui.securitycenter")) },
         onBattery = { open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) },
@@ -100,6 +105,8 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
     onAutostart: () -> Unit = {}, onBattery: () -> Unit = {}, onVendorBattery: () -> Unit = {},
     onTest: () -> Unit = {},
     testEnabled: Boolean = true,
+    moduleConnectionIssue: XposedFramework.ConnectionIssue? = null,
+    onModuleSettings: () -> Unit = {},
 ) {
     var choosing by rememberSaveable { mutableStateOf<String?>(null) }
     var batteryDialog by rememberSaveable { mutableStateOf(false) }
@@ -121,6 +128,12 @@ fun NotificationSettingsScreen(settings: NotificationSettings, status: CourseNot
         closeTime()
     }
     Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp).testTag("notification_settings"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (moduleConnectionIssue != null) Card(Modifier.fillMaxWidth()) {
+            ArrowPreference("Xposed 模块连接", summary = when (moduleConnectionIssue) {
+                XposedFramework.ConnectionIssue.UNAVAILABLE -> "无法连接杭电助手 Xposed。请允许模块自启动和关联启动，然后返回重试"
+                XposedFramework.ConnectionIssue.INACTIVE -> "尚未收到框架连接。请在 LSPosed 中启用杭电助手 Xposed 并检查作用域"
+            }, onClick = onModuleSettings, modifier = Modifier.testTag("notify_module_connection"))
+        }
         if (background.hook !in setOf(BackgroundHookState.INACTIVE, BackgroundHookState.SCOPE_REQUIRED, BackgroundHookState.UNSUPPORTED)) Card(Modifier.fillMaxWidth()) {
             SwitchPreference(backgroundEnhancement, onBackgroundEnhancement, "Xposed 后台提醒增强",
                 summary = background.hook.label, enabled = background.canEnable || backgroundEnhancement,

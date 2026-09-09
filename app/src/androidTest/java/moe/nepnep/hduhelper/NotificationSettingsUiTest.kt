@@ -113,6 +113,30 @@ class NotificationSettingsUiTest {
         compose.onNodeWithTag("notify_island").assertDoesNotExist()
     }
 
+    @Test fun blockedModuleOffersSettingsAndRecoversToBothSwitches() {
+        var blocked by mutableStateOf(true)
+        var opened = false
+        compose.setContent {
+            HDUHelperTheme {
+                NotificationSettingsScreen(NotificationSettings(), CourseNotificationStatus(
+                    island = moe.nepnep.hduhelper.data.island.IslandCapability(
+                        supported = true, framework = !blocked, scoped = !blocked, hookReady = !blocked)),
+                    {}, {}, {},
+                    background = BackgroundStatus(hook = if (blocked) BackgroundHookState.INACTIVE else BackgroundHookState.READY),
+                    moduleConnectionIssue = if (blocked) XposedFramework.ConnectionIssue.UNAVAILABLE else null,
+                    onModuleSettings = { opened = true })
+            }
+        }
+        compose.onNodeWithTag("notify_module_connection").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(opened) }
+        compose.onNodeWithTag("notify_background_enhancement").assertDoesNotExist()
+        compose.onNodeWithTag("notify_island").assertDoesNotExist()
+        compose.runOnIdle { blocked = false }
+        compose.onNodeWithTag("notify_module_connection").assertDoesNotExist()
+        compose.onNodeWithTag("notify_background_enhancement").assertIsDisplayed()
+        compose.onNodeWithTag("notify_island").assertIsDisplayed()
+    }
+
     private fun capture(name: String, tag: String? = null) {
         val image = (if (tag == null) compose.onRoot() else compose.onNodeWithTag(tag)).captureToImage().asAndroidBitmap()
         InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.resolve(name).outputStream().use {

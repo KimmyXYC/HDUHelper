@@ -12,6 +12,9 @@ object XposedFramework {
     data class State(val apiVersion: Int, val scope: Set<String>, val remote: Boolean, val modulePath: String)
     private val serviceState = MutableStateFlow<State?>(null)
     val service = serviceState.asStateFlow()
+    enum class ConnectionIssue { UNAVAILABLE, INACTIVE }
+    private val connectionIssueState = MutableStateFlow<ConnectionIssue?>(null)
+    val connectionIssue = connectionIssueState.asStateFlow()
     private val worker = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var initialized = false
 
@@ -40,6 +43,12 @@ object XposedFramework {
         val value = result?.takeIf { it.getInt("protocol") == ModuleWire.VERSION && it.getBoolean("active") }?.let {
             State(it.getInt("api"), it.getStringArrayList("scope")?.toSet().orEmpty(),
                 it.getBoolean("remote"), it.getString("modulePath").orEmpty())
+        }
+        val installed = runCatching { context.packageManager.getApplicationInfo(ModuleWire.PACKAGE, 0) }.isSuccess
+        connectionIssueState.value = when {
+            value != null || !installed -> null
+            result == null || result.getInt("protocol") != ModuleWire.VERSION -> ConnectionIssue.UNAVAILABLE
+            else -> ConnectionIssue.INACTIVE
         }
         serviceState.value = value
         return value

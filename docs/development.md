@@ -15,6 +15,8 @@
 
 首次迁移需关闭旧“杭电助手”模块，安装并启用“杭电助手 Xposed”，选定作用域后重启一次。后续只更新主应用无需重启，模块代码或作用域改变才需要重启宿主。模块未安装或未激活时，主应用使用普通提醒。
 
+若 LSPosed 显示模块已生效但通知设置缺少两个 Xposed 开关，检查独立“杭电助手 Xposed”的自启动与关联启动权限。HyperOS 可拒绝主应用拉起模块的状态 Provider，日志表现为 `WakePathChecker: MIUILOG-AutoStart ... Reject`、`ModuleBridgeProvider` 和 `Failed to find provider info`；这不等于 Hook 未加载。允许模块启动后返回通知设置重新检测。主应用在模块已安装但状态不可用时显示“Xposed 模块连接”及模块应用设置入口。
+
 ## 电费查询验证
 
 “应用 → 电费查询”使用原生 MIUIX 页面，复用学校 SSO 获取 Neo 会话，提供余额、近 14 天历史和宿舍绑定、更换、解绑。登录地址和 `state` 每次动态获取，Neo 令牌通过独立 Keystore 密钥保存在 `noBackupFilesDir/neo`，不与学校 Cookie 混用。退出或切换账号同步清理令牌及页面数据；页面仅在内存中保留最近查询结果。绑定请求结果不确定时先查询服务器状态，不自动重发写操作。

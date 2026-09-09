@@ -14,8 +14,8 @@ android {
         applicationId = "moe.nepnep.hduhelper"
         minSdk = 33
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.4.2"
+        versionCode = 9
+        versionName = "1.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
